@@ -1,0 +1,48 @@
+{
+  "version": "7",
+  "dialect": "mysql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1771626440481,
+      "tag": "0000_large_princess_powerful",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1771626638483,
+      "tag": "0001_flimsy_gladiator",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1771632028608,
+      "tag": "0002_minor_hawkeye",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1771633562223,
+      "tag": "0003_outstanding_electro",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1771634244275,
+      "tag": "0004_dark_nico_minoru",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1771643160036,
+      "tag": "0005_chubby_mach_iv",
+      "breakpoints": true
+    }
+  ]
+}
