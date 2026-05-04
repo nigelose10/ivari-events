@@ -3,12 +3,12 @@ import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 
 /**
- * LiquidButton — refined to lock the brand palette (warm amber, no purple).
+ * LiquidButton — Apple HIG-aligned, brand-locked (warm amber, no purple).
  *
- * Aligned to design tokens in index.css:
- * - Primary: warm amber gradient (var(--primary) → var(--rose-gold))
- * - Hover: lift 2px + glow strengthen (NOT scale)
- * - Tap: subtle scale-down 0.98 for tactile feel
+ * HIG conformance:
+ * - Hover: lift 2px + glow strengthen — NEVER scale up
+ * - Active/pressed: scale 0.98 (tactile feel, no rubber-band)
+ * - Disabled: opacity reduce + cursor-not-allowed (no animation)
  * - Variant CSS uses CSS variables only — no hard-coded oklch tuples
  */
 interface LiquidButtonProps {

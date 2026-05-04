@@ -121,3 +121,4 @@ dev-dist/
 client/public/sw.js
 client/public/workbox-*.js
 client/public/registerSW.js
+.vercel

@@ -244,7 +244,7 @@ export default function Forge() {
         <div className="max-w-2xl mx-auto flex items-center justify-between">
           <button onClick={() => navigate("/")} className="flex items-center gap-2 text-warm-muted hover:text-foreground transition-colors duration-500">
             <ArrowLeft className="w-4 h-4" />
-            <span className="text-xs font-medium tracking-[0.08em] uppercase">Ledger</span>
+            <span className="text-xs font-medium tracking-[0.08em] uppercase">Events</span>
           </button>
           <h1 className="text-sm font-semibold tracking-[0.12em] uppercase text-warm-muted">The Forge</h1>
           <div className="w-16" />

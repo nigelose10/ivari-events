@@ -201,6 +201,28 @@
   --motion-fast: 200ms;     /* hover, focus, micro */
   --motion-base: 600ms;     /* reveals, transitions */
   --motion-slow: 1000ms;    /* hero entrances, cinematic */
+
+  /* ============================================================================
+     APPLE HIG TYPE SCALE — sits UNDERNEATH the existing scale, doesn't replace.
+     SwiftUI parity sizes for components that want native-feel hierarchy.
+     ========================================================================== */
+  --text-large-title: 2.125rem;  /* 34px — sticky page title (shrinks inline) */
+  --text-title-1:     1.75rem;   /* 28px — section titles */
+  --text-title-2:     1.375rem;  /* 22px — subsection */
+  --text-title-3:     1.25rem;   /* 20px — card titles */
+  --text-headline:    1.0625rem; /* 17px semibold — primary list item */
+  --text-body:        1.0625rem; /* 17px regular — body */
+  --text-callout:     1rem;      /* 16px — secondary CTA copy */
+  --text-subheadline: 0.9375rem; /* 15px — supporting */
+  --text-footnote:    0.8125rem; /* 13px — meta */
+  --text-caption:     0.75rem;   /* 12px — finest meta */
+
+  /* ============================================================================
+     LIQUID GLASS — Apple-style vibrancy stacks (deeper than default glass).
+     Use for: modals, sheets, sticky headers, tab bars, hero surfaces.
+     ========================================================================== */
+  --glass-vibrancy: blur(120px) saturate(280%) brightness(1.05);
+  --glass-vibrancy-soft: blur(80px) saturate(220%) brightness(1.02);
 }
 
 @layer base {
@@ -732,5 +754,308 @@
     line-height: 1.1;
     letter-spacing: -0.035em;
     text-wrap: balance;
+  }
+
+  /* ============================================================================
+     APPLE HIG TYPOGRAPHY UTILITIES
+     SwiftUI-parity ramp, mapped to CSS custom properties so the whole app can
+     opt into the native-feel scale on a per-element basis without breaking
+     existing Tailwind sizing.
+     ========================================================================== */
+  .text-large-title {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: var(--text-large-title);
+    line-height: 1.05;
+    letter-spacing: -0.035em;
+  }
+  .text-title-1 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: var(--text-title-1);
+    line-height: 1.1;
+    letter-spacing: -0.03em;
+  }
+  .text-title-2 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: var(--text-title-2);
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+  }
+  .text-title-3 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: var(--text-title-3);
+    line-height: 1.2;
+    letter-spacing: -0.015em;
+  }
+  .text-headline {
+    font-family: var(--font-sans);
+    font-weight: 600;
+    font-size: var(--text-headline);
+    line-height: 1.3;
+    letter-spacing: -0.01em;
+  }
+  .text-body {
+    font-family: var(--font-sans);
+    font-weight: 400;
+    font-size: var(--text-body);
+    line-height: 1.45;
+    letter-spacing: -0.005em;
+  }
+  .text-callout {
+    font-family: var(--font-sans);
+    font-weight: 500;
+    font-size: var(--text-callout);
+    line-height: 1.4;
+    letter-spacing: -0.005em;
+  }
+  .text-subheadline {
+    font-family: var(--font-sans);
+    font-weight: 400;
+    font-size: var(--text-subheadline);
+    line-height: 1.4;
+  }
+  .text-footnote {
+    font-family: var(--font-sans);
+    font-weight: 400;
+    font-size: var(--text-footnote);
+    line-height: 1.4;
+    color: var(--text-tertiary);
+  }
+  .text-caption {
+    font-family: var(--font-sans);
+    font-weight: 500;
+    font-size: var(--text-caption);
+    line-height: 1.35;
+    color: var(--text-tertiary);
+  }
+
+  /* ============================================================================
+     GLASS VIBRANCY — Apple-grade frosted membrane.
+     Multi-layer: deep blur + saturate boost + brightness lift, plus a 1px
+     internal highlight + 1px outer hairline (the "Apple glass edge").
+     Hover intensifies the BLUR, not the color (HIG rule).
+     ========================================================================== */
+  .glass-vibrancy {
+    position: relative;
+    background: oklch(1 0 0 / 5%);
+    backdrop-filter: var(--glass-vibrancy);
+    -webkit-backdrop-filter: var(--glass-vibrancy);
+    border: 1px solid oklch(1 0 0 / 12%);
+    border-radius: var(--radius-xl);
+    box-shadow:
+      /* Apple glass edge — two stacked borders for the refraction edge */
+      inset 0 1px 0 0 oklch(1 0 0 / 22%),
+      inset 0 0 0 1px oklch(1 0 0 / 4%),
+      inset 0 -1px 0 0 oklch(0 0 0 / 12%),
+      0 30px 100px oklch(0 0 0 / 48%),
+      0 0 0 0.5px oklch(1 0 0 / 6%);
+    transition:
+      backdrop-filter var(--motion-base) var(--ease),
+      -webkit-backdrop-filter var(--motion-base) var(--ease),
+      box-shadow var(--motion-base) var(--ease),
+      transform var(--motion-fast) var(--ease);
+  }
+  .glass-vibrancy:hover {
+    /* Hover intensifies the blur, NOT the color */
+    backdrop-filter: blur(160px) saturate(320%) brightness(1.08);
+    -webkit-backdrop-filter: blur(160px) saturate(320%) brightness(1.08);
+  }
+  .glass-vibrancy-soft {
+    background: oklch(1 0 0 / 4%);
+    backdrop-filter: var(--glass-vibrancy-soft);
+    -webkit-backdrop-filter: var(--glass-vibrancy-soft);
+    border: 1px solid oklch(1 0 0 / 10%);
+    border-radius: var(--radius-lg);
+    box-shadow:
+      inset 0 1px 0 0 oklch(1 0 0 / 16%),
+      inset 0 0 0 1px oklch(1 0 0 / 3%),
+      0 16px 60px oklch(0 0 0 / 40%);
+  }
+
+  /* ============================================================================
+     APPLE GLASS EDGE — drop-in for any container that needs the two-stacked
+     border Apple uses on cards in iOS / iPadOS. Compose with .glass-vibrancy
+     for the membrane, or use alone over an existing background.
+     ========================================================================== */
+  .glass-edge {
+    box-shadow:
+      inset 0 1px 0 0 oklch(1 0 0 / 22%),
+      inset 0 0 0 1px oklch(1 0 0 / 5%),
+      inset 0 -1px 0 0 oklch(0 0 0 / 14%);
+  }
+
+  /* ============================================================================
+     SPECULAR HIGHLIGHT — second layer that follows mouse via JS-set CSS vars.
+     The base layer (.glass-specular::before) is the broad falloff; this second
+     layer is a tighter, brighter "wet" highlight that tracks more responsively.
+     ========================================================================== */
+  .glass-specular::after {
+    content: "";
+    position: absolute;
+    top: var(--specular-y2, -50%);
+    left: var(--specular-x2, -50%);
+    width: 80%;
+    height: 80%;
+    background: radial-gradient(
+      circle at center,
+      oklch(1 0 0 / 14%) 0%,
+      oklch(1 0 0 / 4%) 28%,
+      transparent 55%
+    );
+    pointer-events: none;
+    transition:
+      top 90ms linear,
+      left 90ms linear;
+    z-index: 1;
+    mix-blend-mode: screen;
+  }
+  @media (pointer: coarse) {
+    .glass-specular::after {
+      animation: specular-drift-2 18s var(--ease) infinite;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .glass-specular::after { animation: none !important; }
+  }
+  @keyframes specular-drift-2 {
+    0%, 100% { top: -30%; left: -10%; }
+    50%      { top:  30%; left:  40%; }
+  }
+
+  /* ============================================================================
+     SHEET — Apple-style bottom sheet (mobile) / side sheet (desktop).
+     Dragged via Framer Motion in the wrapper; CSS supplies the membrane.
+     ========================================================================== */
+  .sheet-surface {
+    background: oklch(0.08 0.012 75 / 78%);
+    backdrop-filter: var(--glass-vibrancy);
+    -webkit-backdrop-filter: var(--glass-vibrancy);
+    border: 1px solid oklch(1 0 0 / 12%);
+    box-shadow:
+      inset 0 1px 0 0 oklch(1 0 0 / 22%),
+      inset 0 0 0 1px oklch(1 0 0 / 4%),
+      0 -30px 100px oklch(0 0 0 / 60%);
+  }
+  .sheet-handle {
+    width: 36px;
+    height: 5px;
+    border-radius: 999px;
+    background: oklch(1 0 0 / 26%);
+    margin: 8px auto 12px;
+  }
+
+  /* ============================================================================
+     APPLE TAB BAR (mobile bottom) — vibrancy membrane, 4 tabs, safe-area aware.
+     ========================================================================== */
+  .apple-tab-bar {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    z-index: 50;
+    padding-bottom: env(safe-area-inset-bottom, 0);
+    background: oklch(0.06 0.008 75 / 70%);
+    backdrop-filter: var(--glass-vibrancy);
+    -webkit-backdrop-filter: var(--glass-vibrancy);
+    border-top: 1px solid oklch(1 0 0 / 10%);
+    box-shadow:
+      inset 0 1px 0 0 oklch(1 0 0 / 16%),
+      0 -8px 40px oklch(0 0 0 / 32%);
+  }
+  .apple-tab-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 8px 4px 6px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--text-tertiary);
+    transition: color var(--motion-fast) var(--ease);
+  }
+  .apple-tab-item[data-active="true"] {
+    color: var(--primary);
+  }
+  .apple-tab-item:active { transform: scale(0.96); }
+
+  /* ============================================================================
+     APPLE STICKY HEADER — large title that compresses on scroll.
+     Driver: a `data-compact="true"` attribute toggled by a scroll listener.
+     ========================================================================== */
+  .apple-sticky-header {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    padding-top: env(safe-area-inset-top, 0);
+    background: oklch(0.04 0.005 75 / 0%);
+    backdrop-filter: blur(0) saturate(100%);
+    -webkit-backdrop-filter: blur(0) saturate(100%);
+    transition:
+      background var(--motion-base) var(--ease),
+      backdrop-filter var(--motion-base) var(--ease),
+      -webkit-backdrop-filter var(--motion-base) var(--ease),
+      border-color var(--motion-base) var(--ease);
+    border-bottom: 1px solid transparent;
+  }
+  .apple-sticky-header[data-compact="true"] {
+    background: oklch(0.06 0.008 75 / 70%);
+    backdrop-filter: var(--glass-vibrancy);
+    -webkit-backdrop-filter: var(--glass-vibrancy);
+    border-bottom-color: oklch(1 0 0 / 8%);
+  }
+  .apple-sticky-title {
+    font-family: var(--font-display);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    font-size: var(--text-large-title);
+    line-height: 1.05;
+    transition:
+      font-size var(--motion-base) var(--ease),
+      transform var(--motion-base) var(--ease);
+  }
+  .apple-sticky-header[data-compact="true"] .apple-sticky-title {
+    font-size: var(--text-headline);
+    transform: translateY(0);
+  }
+
+  /* ============================================================================
+     APPLE PRESS — tap states for buttons/cards that scale DOWN only.
+     Apple's HIG is explicit: never scale up on hover; press = 0.96–0.98.
+     ========================================================================== */
+  .apple-press {
+    transition: transform var(--motion-fast) var(--ease);
+  }
+  .apple-press:active { transform: scale(0.97); }
+
+  /* ============================================================================
+     CARD STACK — Apple Invites "Past invitations" deck.
+     Second/third cards peek behind with subtle rotation + scale.
+     ========================================================================== */
+  .card-stack {
+    position: relative;
+    isolation: isolate;
+  }
+  .card-stack > * {
+    transition: transform var(--motion-base) var(--ease);
+  }
+  .card-stack > *:nth-child(2) {
+    transform: translateY(-8px) scale(0.97) rotate(-1.2deg);
+    z-index: -1;
+    opacity: 0.85;
+  }
+  .card-stack > *:nth-child(3) {
+    transform: translateY(-16px) scale(0.94) rotate(1.6deg);
+    z-index: -2;
+    opacity: 0.7;
+  }
+  .card-stack > *:nth-child(n+4) {
+    transform: translateY(-22px) scale(0.92);
+    z-index: -3;
+    opacity: 0;
+    pointer-events: none;
   }
 }

@@ -9,6 +9,7 @@ import { httpBatchLink, TRPCClientError } from "@trpc/client";
 import { createRoot } from "react-dom/client";
 import superjson from "superjson";
 import App from "./App";
+import EnvGuardBanner from "./components/EnvGuard";
 import "./index.css";
 
 const queryClient = new QueryClient();
@@ -60,15 +61,18 @@ const trpcClient = trpc.createClient({
 });
 
 createRoot(document.getElementById("root")!).render(
-  <StackProvider app={stackClientApp}>
-    <StackTheme>
-      <ConvexProviderWithAuth client={convex} useAuth={useAuthForConvex}>
-        <trpc.Provider client={trpcClient} queryClient={queryClient}>
-          <QueryClientProvider client={queryClient}>
-            <App />
-          </QueryClientProvider>
-        </trpc.Provider>
-      </ConvexProviderWithAuth>
-    </StackTheme>
-  </StackProvider>
+  <>
+    <EnvGuardBanner />
+    <StackProvider app={stackClientApp}>
+      <StackTheme>
+        <ConvexProviderWithAuth client={convex} useAuth={useAuthForConvex}>
+          <trpc.Provider client={trpcClient} queryClient={queryClient}>
+            <QueryClientProvider client={queryClient}>
+              <App />
+            </QueryClientProvider>
+          </trpc.Provider>
+        </ConvexProviderWithAuth>
+      </StackTheme>
+    </StackProvider>
+  </>
 );

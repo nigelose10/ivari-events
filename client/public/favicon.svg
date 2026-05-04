@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="IVARI">
+  <defs>
+    <linearGradient id="amber" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%"  stop-color="oklch(0.78 0.12 75)"/>
+      <stop offset="55%" stop-color="oklch(0.72 0.14 60)"/>
+      <stop offset="100%" stop-color="oklch(0.65 0.16 45)"/>
+    </linearGradient>
+    <radialGradient id="sheen" cx="0.32" cy="0.28" r="0.6">
+      <stop offset="0%"  stop-color="white" stop-opacity="0.32"/>
+      <stop offset="60%" stop-color="white" stop-opacity="0.04"/>
+      <stop offset="100%" stop-color="white" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- pure black bg, edge-to-edge so iOS doesn't add jank -->
+  <rect width="512" height="512" fill="#000000"/>
+
+  <!-- amber-gradient circle (centered, ~80% safe zone) -->
+  <circle cx="256" cy="256" r="208" fill="url(#amber)"/>
+  <!-- specular sheen for liquid-glass feel -->
+  <circle cx="256" cy="256" r="208" fill="url(#sheen)"/>
+
+  <!-- Monogram "I" — Cabinet Grotesk Extrabold parity, drawn as path so no font dep -->
+  <!-- Top serif bar -->
+  <rect x="186" y="146" width="140" height="28" rx="6" fill="#0a0a0a"/>
+  <!-- Stem -->
+  <rect x="240" y="146" width="32" height="220" rx="4" fill="#0a0a0a"/>
+  <!-- Bottom serif bar -->
+  <rect x="186" y="338" width="140" height="28" rx="6" fill="#0a0a0a"/>
+</svg>

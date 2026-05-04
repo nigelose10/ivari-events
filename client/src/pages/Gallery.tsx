@@ -42,7 +42,7 @@ export default function Gallery() {
             className="flex items-center gap-2 text-[oklch(0.5_0.02_265)] hover:text-foreground transition-colors duration-300 mb-8"
           >
             <ArrowLeft className="w-5 h-5" />
-            <span className="text-sm font-medium">The Ledger</span>
+            <span className="text-sm font-medium">Events</span>
           </button>
 
           <motion.div

@@ -324,7 +324,7 @@ export default function Pulse() {
         <AmbientBackground />
         <GlassCard className="p-10 text-center max-w-sm">
           <h2 className="text-xl font-semibold mb-3">Event not found</h2>
-          <LiquidButton onClick={() => navigate("/")} variant="ghost">Back to Ledger</LiquidButton>
+          <LiquidButton onClick={() => navigate("/")} variant="ghost">Back to Events</LiquidButton>
         </GlassCard>
       </div>
     );
@@ -376,7 +376,7 @@ export default function Pulse() {
         <div className="max-w-3xl mx-auto">
           <button onClick={() => navigate("/")} className="flex items-center gap-2 text-[oklch(0.5_0.02_265)] hover:text-foreground transition-colors duration-300 mb-5">
             <ArrowLeft className="w-5 h-5" />
-            <span className="text-sm font-medium">The Ledger</span>
+            <span className="text-sm font-medium">Events</span>
           </button>
 
           <AnimatePresence mode="wait">

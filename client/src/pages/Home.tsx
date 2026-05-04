@@ -1,11 +1,11 @@
 /**
- * Home — Ledger / unauth landing.
+ * Home — Events / unauth landing.
  *
  * TODO (deferred — see DESIGN-AUDIT.md):
  * - [ ] Replace IVARI wordmark gradient (currently blue→purple→magenta — banned).
  *       Use warm amber: from-[var(--primary)] via-[var(--rose-gold)] to-[var(--primary)]
  * - [ ] Hardcoded oklch(0.5_0.02_265) cool-gray secondary text → var(--text-secondary)
- * - [ ] Spinner loader → card shimmer skeletons in Ledger
+ * - [ ] Spinner loader → card shimmer skeletons in Events
  * - [ ] Increase wordmark→subhead gap from 48px to 96px (landing breathing room)
  * - [ ] EventCard hero image is too small (28–36px) — bump to 40% of card width
  * - [ ] Status badge should overlay the image top-right, not sit next to title
@@ -136,7 +136,7 @@ export default function Home() {
                 size="xl"
                 className="w-full max-w-xs mx-auto gap-3"
               >
-                Enter The Ledger
+                Enter Events
                 <ArrowRight className="w-5 h-5" />
               </LiquidButton>
               <p className="text-xs text-[oklch(0.45_0.02_265)] mt-4 tracking-wide">
@@ -185,7 +185,7 @@ export default function Home() {
               transition={t}
             >
               <h1 className="text-4xl sm:text-5xl font-bold tracking-[-0.03em] leading-tight">
-                The Ledger
+                Events
               </h1>
               <p className="text-[oklch(0.55_0.02_265)] mt-2 text-[0.9375rem]">
                 {user?.name ? `Welcome back, ${user.name}` : "Your gatherings"}

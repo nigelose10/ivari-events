@@ -8,12 +8,13 @@
  * - `getBySlug` is public and returns only fields safe for guest portals
  *   (no `hostId`, no `guestTokenSalt`).
  *
- * Image regen: `regenerateImage` schedules an action defined in `images.ts`
- * that does the HTTP call and writes the URL back via `events.setImage`.
+ * Cover image: hosts upload directly to Convex storage via the upload-URL
+ * pattern (see `events.generateCoverUploadUrl`). The resulting `_storage` ID
+ * is persisted as `imageStorageId`; queries resolve it to a fresh URL on
+ * read and return it as `imageUrl` so consumers don't need to change shape.
  */
 import { v } from "convex/values";
-import { mutation, query, internalMutation } from "./_generated/server";
-import { internal } from "./_generated/api";
+import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 
@@ -103,6 +104,22 @@ async function countRsvpsForEvent(
 // Queries
 // ───────────────────────────────────────────────────────────────────────────
 
+/** Resolve the cover image URL for an event row. Prefers the new
+ *  `imageStorageId` (host-uploaded), falls back to the legacy `imageUrl`
+ *  string for events created before the upload migration. Returns the
+ *  event with `imageUrl` set to whichever resolved (so callers don't have
+ *  to branch on which storage path the row came from). */
+async function withResolvedImage<T extends Doc<"events">>(
+  ctx: QueryCtx | MutationCtx,
+  evt: T,
+): Promise<T & { imageUrl: string | undefined }> {
+  if (evt.imageStorageId) {
+    const url = await ctx.storage.getUrl(evt.imageStorageId);
+    return { ...evt, imageUrl: url ?? evt.imageUrl };
+  }
+  return { ...evt, imageUrl: evt.imageUrl };
+}
+
 export const list = query({
   args: {},
   handler: async (ctx) => {
@@ -120,7 +137,8 @@ export const list = query({
           .withIndex("by_eventId", (q) => q.eq("eventId", evt._id))
           .collect();
         const rsvpCounts = await countRsvpsForEvent(ctx, evt._id);
-        return { ...evt, guestCount: guests.length, rsvpCounts };
+        const resolved = await withResolvedImage(ctx, evt);
+        return { ...resolved, guestCount: guests.length, rsvpCounts };
       }),
     );
   },
@@ -130,7 +148,41 @@ export const get = query({
   args: { id: v.id("events") },
   handler: async (ctx, { id }) => {
     const user = await requireUser(ctx);
-    return requireOwnedEvent(ctx, id, user._id);
+    const event = await requireOwnedEvent(ctx, id, user._id);
+    return withResolvedImage(ctx, event);
+  },
+});
+
+/**
+ * Resolves whether the currently-authed user is the host of the given event.
+ * Returns `false` (not throw) for unauthenticated callers — this is consumed
+ * by guest-facing surfaces (like MemoryWall) that need to conditionally show
+ * a "Moderate" button without breaking guests who hit the same page.
+ */
+export const isHostBySlug = query({
+  args: { slug: v.string() },
+  handler: async (ctx, { slug }) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) return { isHost: false, eventId: null };
+
+    const event = await ctx.db
+      .query("events")
+      .withIndex("by_slug", (q) => q.eq("slug", slug))
+      .unique();
+    if (!event) return { isHost: false, eventId: null };
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_tokenIdentifier", (q) =>
+        q.eq("tokenIdentifier", identity.tokenIdentifier),
+      )
+      .unique();
+    if (!user) return { isHost: false, eventId: event._id };
+
+    return {
+      isHost: event.hostId === user._id,
+      eventId: event._id,
+    };
   },
 });
 
@@ -143,12 +195,15 @@ export const getBySlug = query({
       .withIndex("by_slug", (q) => q.eq("slug", slug))
       .unique();
     if (!event) throw new Error("Event not found");
+    const imageUrl = event.imageStorageId
+      ? ((await ctx.storage.getUrl(event.imageStorageId)) ?? event.imageUrl)
+      : event.imageUrl;
     return {
       _id: event._id,
       slug: event.slug,
       title: event.title,
       description: event.description,
-      imageUrl: event.imageUrl,
+      imageUrl,
       eventDate: event.eventDate,
       locationName: event.locationName,
       locationLat: event.locationLat,
@@ -179,7 +234,11 @@ export const create = mutation({
     locationLat: v.optional(v.string()),
     locationLng: v.optional(v.string()),
     locationPlaceId: v.optional(v.string()),
+    /** Host-uploaded cover image (preferred). */
+    imageStorageId: v.optional(v.id("_storage")),
+    /** @deprecated Legacy URL field. Kept for back-compat with old clients. */
     imageUrl: v.optional(v.string()),
+    /** @deprecated Schema-only; the AI-prompt flow has been removed. */
     imagePrompt: v.optional(v.string()),
     maxGuests: v.optional(v.number()),
     maxCapacity: v.optional(v.number()),
@@ -213,6 +272,7 @@ export const create = mutation({
       locationLat: input.locationLat,
       locationLng: input.locationLng,
       locationPlaceId: input.locationPlaceId,
+      imageStorageId: input.imageStorageId,
       imageUrl: input.imageUrl,
       imagePrompt: input.imagePrompt,
       maxGuests: input.maxGuests,
@@ -247,7 +307,11 @@ export const update = mutation({
     locationLat: v.optional(v.string()),
     locationLng: v.optional(v.string()),
     locationPlaceId: v.optional(v.string()),
+    /** Host-uploaded cover image (preferred). */
+    imageStorageId: v.optional(v.id("_storage")),
+    /** @deprecated Legacy URL field. Kept for back-compat with old clients. */
     imageUrl: v.optional(v.string()),
+    /** @deprecated Schema-only; AI-prompt flow has been removed. */
     imagePrompt: v.optional(v.string()),
     maxGuests: v.optional(v.number()),
     maxCapacity: v.optional(v.number()),
@@ -334,6 +398,7 @@ export const duplicate = mutation({
       description: source.description,
       imagePrompt: source.imagePrompt,
       imageUrl: source.imageUrl,
+      imageStorageId: source.imageStorageId,
       eventDate: undefined,
       locationName: source.locationName,
       locationLat: source.locationLat,
@@ -415,43 +480,21 @@ export const remove = mutation({
 });
 
 /**
- * Internal mutation: write a fresh imageUrl after an image-gen action resolves.
- * Called from `images.runRegenerateImage`.
+ * Mint a one-shot upload URL for a host's cover image. Mirrors the photo
+ * upload pattern in `photos.ts`:
+ *   1. Client calls this mutation, gets a signed upload URL.
+ *   2. Client POSTs the file directly to that URL — bypasses the function
+ *      arg-size limit and works for any image up to Convex storage caps.
+ *   3. Client calls `events.create` (or `events.update`) with the resulting
+ *      `imageStorageId` to attach the upload to the event row.
+ *
+ * Auth: any signed-in user can mint an upload URL. Ownership is enforced
+ * when the storage ID is later attached to a specific event row.
  */
-export const setImage = internalMutation({
-  args: {
-    id: v.id("events"),
-    imageUrl: v.string(),
-    imagePrompt: v.optional(v.string()),
-  },
-  handler: async (ctx, { id, imageUrl, imagePrompt }) => {
-    await ctx.db.patch(id, {
-      imageUrl,
-      ...(imagePrompt !== undefined ? { imagePrompt } : {}),
-      updatedAt: Date.now(),
-    });
-  },
-});
-
-/**
- * Schedule an image regen for an event. Verifies ownership, then schedules
- * the actual image-gen action. Returns immediately; client subscribes to the
- * reactive `imageUrl` field via `events.get`.
- */
-export const regenerateImage = mutation({
-  args: {
-    id: v.id("events"),
-    subject: v.string(),
-  },
-  handler: async (ctx, { id, subject }) => {
-    const user = await requireUser(ctx);
-    await requireOwnedEvent(ctx, id, user._id);
-    if (subject.length < 1) throw new Error("Subject is required");
-
-    await ctx.scheduler.runAfter(0, internal.images.runRegenerateImage, {
-      id,
-      subject,
-    });
-    return { scheduled: true };
+export const generateCoverUploadUrl = mutation({
+  args: {},
+  handler: async (ctx) => {
+    await requireUser(ctx);
+    return ctx.storage.generateUploadUrl();
   },
 });

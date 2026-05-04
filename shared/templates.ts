@@ -1,6 +1,10 @@
 /**
- * IVARI Event Templates — curated themes with Nano Banana prompts,
- * color palettes, and pre-built survey questions.
+ * IVARI Event Templates — curated themes with color palettes, suggested copy,
+ * and pre-built survey questions.
+ *
+ * Hosts upload their own cover image; `coverImageHint` is a styling tip we
+ * show above the upload area to nudge them in the right direction (e.g.
+ * "warm candlelight, intimate"). No automated image generation.
  */
 
 export interface SurveyQuestion {
@@ -17,8 +21,8 @@ export interface EventTemplate {
   tagline: string;
   description: string;
   emoji: string;
-  /** Nano Banana prompt modifier specific to this theme */
-  nanoBananaPrompt: string;
+  /** A short styling suggestion shown above the cover-image uploader */
+  coverImageHint: string;
   /** Suggested title placeholder */
   titlePlaceholder: string;
   /** Suggested description */
@@ -39,7 +43,7 @@ export const EVENT_TEMPLATES: EventTemplate[] = [
     tagline: "A celebration of love",
     description: "Elegant ceremony and reception with romantic ambiance, floral arrangements, and timeless sophistication.",
     emoji: "💍",
-    nanoBananaPrompt: "romantic wedding venue with cascading flowers, soft candlelight, crystal chandeliers, golden hour light streaming through tall windows, rose petals on marble floors",
+    coverImageHint: "Cascading florals, soft candlelight, golden-hour glow",
     titlePlaceholder: "The Anderson Wedding",
     suggestedDescription: "Join us as we celebrate the beginning of our forever. An evening of love, laughter, and unforgettable memories.",
     surveyQuestions: [
@@ -59,7 +63,7 @@ export const EVENT_TEMPLATES: EventTemplate[] = [
     tagline: "Another year, another adventure",
     description: "Vibrant celebration with bold colors, festive energy, and joyful moments worth remembering.",
     emoji: "🎂",
-    nanoBananaPrompt: "luxurious birthday celebration with neon lights, confetti, champagne towers, modern lounge setting, colorful balloons against dark velvet backdrop, celebration atmosphere",
+    coverImageHint: "Confetti, neon accents, late-night lounge energy",
     titlePlaceholder: "Sarah's 30th Birthday Bash",
     suggestedDescription: "Let's celebrate another trip around the sun! Join us for an unforgettable night of music, dancing, and pure joy.",
     surveyQuestions: [
@@ -78,7 +82,7 @@ export const EVENT_TEMPLATES: EventTemplate[] = [
     tagline: "Where business meets elegance",
     description: "Sophisticated corporate event with refined aesthetics, professional networking, and world-class hospitality.",
     emoji: "🏛️",
-    nanoBananaPrompt: "grand corporate gala in a modern glass atrium, dramatic uplighting in deep blue and gold, long banquet tables with crystal centerpieces, city skyline visible through floor-to-ceiling windows, black tie elegance",
+    coverImageHint: "Architectural backdrop, deep blues and gold, black-tie formality",
     titlePlaceholder: "Annual Innovation Gala 2026",
     suggestedDescription: "An evening of recognition, connection, and forward-thinking. Join industry leaders for our most prestigious gathering of the year.",
     surveyQuestions: [
@@ -98,7 +102,7 @@ export const EVENT_TEMPLATES: EventTemplate[] = [
     tagline: "Intimate gatherings, lasting impressions",
     description: "Warm, intimate dinner with curated ambiance, thoughtful details, and the art of togetherness.",
     emoji: "🕯️",
-    nanoBananaPrompt: "intimate luxury dinner party with warm candlelight, rustic wooden table set with fine china, hanging greenery and fairy lights, wine glasses catching golden light, cozy elegant atmosphere",
+    coverImageHint: "Warm candlelit, intimate, fine china and slow conversation",
     titlePlaceholder: "An Evening at the Rosewood",
     suggestedDescription: "An intimate evening of exceptional cuisine, meaningful conversation, and the simple pleasure of gathering around a beautiful table.",
     surveyQuestions: [

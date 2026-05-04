@@ -69,7 +69,7 @@ export default function CheckIn() {
         <AmbientBackground />
         <GlassCard className="p-8 text-center">
           <p className="text-white/60">Event not found or you don't have access.</p>
-          <LiquidButton onClick={() => navigate("/")} className="mt-4">Back to Ledger</LiquidButton>
+          <LiquidButton onClick={() => navigate("/")} className="mt-4">Back to Events</LiquidButton>
         </GlassCard>
       </div>
     );

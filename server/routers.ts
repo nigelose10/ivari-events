@@ -13,7 +13,6 @@ import {
   recordPortalView, getPortalAnalytics, getPhotoUploadTimeline,
   checkInGuest, uncheckInGuest, getCheckInStats,
 } from "./db";
-import { generateImage } from "./_core/imageGeneration";
 import { invokeLLM } from "./_core/llm";
 import { signGuestToken, verifyGuestToken } from "./jwt";
 import { storagePut } from "./storage";
@@ -23,10 +22,6 @@ import { notifyOwner } from "./_core/notification";
 import { EVENT_TEMPLATES, getTemplateById } from "../shared/templates";
 import QRCode from "qrcode";
 import crypto from "crypto";
-
-/** The Nano Banana prompt modifier for glass-optimized imagery */
-const NANO_BANANA_MODIFIER =
-  "in the style of ethereal hyper-realism, cinematic lighting, 8k, bokeh, optimized for glass refraction overlays";
 
 /** Valid status transitions */
 const VALID_TRANSITIONS: Record<string, string[]> = {

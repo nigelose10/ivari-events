@@ -35,15 +35,24 @@ export default defineSchema({
     .index("by_email", ["email"]),
 
   // ───────────────────────────────────────────────────────────────────────
-  // events — the core entity. AI-generated art, location, scheduling.
+  // events — the core entity. Host-uploaded cover image, location, scheduling.
   // ───────────────────────────────────────────────────────────────────────
   events: defineTable({
     slug: v.string(),
     hostId: v.id("users"),
     title: v.string(),
     description: v.optional(v.string()),
+    /** @deprecated Legacy AI-prompt field. Schema-only for back-compat; new
+     *  writes do not populate this. Safe to drop in a future migration. */
     imagePrompt: v.optional(v.string()),
+    /** Legacy hosted image URL (S3-era / pre-Convex-storage). Reads still
+     *  surface this so old events render. New writes go through
+     *  `imageStorageId` instead. */
     imageUrl: v.optional(v.string()),
+    /** Convex storage ID for a host-uploaded cover image. The canonical
+     *  source of truth for new events. Queries resolve this to a URL on
+     *  read and return it as `imageUrl` for the client. */
+    imageStorageId: v.optional(v.id("_storage")),
     eventDate: v.optional(v.number()),
     locationName: v.optional(v.string()),
     locationLat: v.optional(v.string()),
@@ -97,7 +106,20 @@ export default defineSchema({
   }).index("by_eventId", ["eventId"]),
 
   // ───────────────────────────────────────────────────────────────────────
-  // photos — guest-uploaded images for the Memory Wall.
+  // photos — guest-uploaded images for the Memory Wall + moderated Gallery.
+  //
+  // Moderation model:
+  //   - Guest uploads land as `status: "pending"`. Hidden from public lists
+  //     until a host approves them. Hosts see them in the Pending tab of the
+  //     moderation panel.
+  //   - Host uploads bypass review (`status: "approved"` immediately).
+  //   - `featured` lifts a photo to the top of the public gallery in a
+  //     larger frame — the "hero set".
+  //
+  // Backwards-compat (V1 migration): existing rows pre-dating the moderation
+  // schema have no `status` field. Convex doesn't allow schema-level defaults,
+  // so the listApproved query treats `status === undefined` as approved
+  // (legacy data is grandfathered in). New writes always set status.
   // ───────────────────────────────────────────────────────────────────────
   photos: defineTable({
     eventId: v.id("events"),
@@ -105,7 +127,26 @@ export default defineSchema({
     imageUrl: v.string(),
     fileKey: v.optional(v.string()),
     caption: v.optional(v.string()),
-  }).index("by_eventId", ["eventId"]),
+    /** Moderation state. Optional for legacy rows (treated as "approved"). */
+    status: v.optional(
+      v.union(
+        v.literal("pending"),
+        v.literal("approved"),
+        v.literal("rejected"),
+      ),
+    ),
+    /** Host who approved/rejected. */
+    moderatedBy: v.optional(v.id("users")),
+    /** Decision timestamp (ms). */
+    moderatedAt: v.optional(v.number()),
+    /** Optional free-text reason captured on reject. */
+    moderationNote: v.optional(v.string()),
+    /** Whether this photo is highlighted as part of the hero set. */
+    featured: v.optional(v.boolean()),
+  })
+    .index("by_eventId", ["eventId"])
+    // Compound index for fast public-feed queries by approval state.
+    .index("by_event_status", ["eventId", "status"]),
 
   // ───────────────────────────────────────────────────────────────────────
   // guests — imported guest list with individual tracking.
@@ -150,6 +191,74 @@ export default defineSchema({
     failedCount: v.optional(v.number()),
     triggeredBy: v.union(v.literal("host"), v.literal("system")),
   }).index("by_eventId", ["eventId"]),
+
+  // ───────────────────────────────────────────────────────────────────────
+  // chats — per-event group chats. Multiple chats per event; types are:
+  //   "general" — auto-includes every guest on the event
+  //   "admin"   — restricted to admins/co-hosts
+  //   "custom"  — host hand-picks members (e.g. bridal party, vendors)
+  // The `archived` flag is a soft-hide so chat history isn't lost when a
+  // host wraps an event.
+  // ───────────────────────────────────────────────────────────────────────
+  chats: defineTable({
+    eventId: v.id("events"),
+    name: v.string(),
+    type: v.union(
+      v.literal("general"),
+      v.literal("admin"),
+      v.literal("custom"),
+    ),
+    createdBy: v.id("users"),
+    archived: v.boolean(),
+  }).index("by_eventId", ["eventId"]),
+
+  // ───────────────────────────────────────────────────────────────────────
+  // chatMembers — membership + per-chat role. A member is EITHER a Stack
+  // Auth user (host/co-host) OR a guest record (token-holder). Roles:
+  //   owner  — the event host who created the chat. Sole role-changer.
+  //   admin  — co-host or chat admin. Can moderate, add/remove members.
+  //   member — regular participant.
+  //   muted  — read-only (moderation tier).
+  // `lastReadAt` powers the unread badge.
+  // ───────────────────────────────────────────────────────────────────────
+  chatMembers: defineTable({
+    chatId: v.id("chats"),
+    userId: v.optional(v.id("users")),
+    guestId: v.optional(v.id("guests")),
+    role: v.union(
+      v.literal("owner"),
+      v.literal("admin"),
+      v.literal("member"),
+      v.literal("muted"),
+    ),
+    joinedAt: v.number(),
+    lastReadAt: v.optional(v.number()),
+  })
+    .index("by_chatId", ["chatId"])
+    .index("by_userId", ["userId"])
+    .index("by_guestId", ["guestId"])
+    .index("by_chat_user", ["chatId", "userId"])
+    .index("by_chat_guest", ["chatId", "guestId"]),
+
+  // ───────────────────────────────────────────────────────────────────────
+  // messages — per-chat ordered messages. `_creationTime` is the canonical
+  // ordering key; pagination uses `beforeMs` cursors against that. Author
+  // is denormalized via `authorName` for display speed (avoids a roundtrip
+  // for every bubble). Attachments piggyback on Convex storage; see
+  // `photos.ts` for the upload pattern. Soft-deletes preserve thread
+  // structure (replies, quotes) — render as "[message removed]".
+  // ───────────────────────────────────────────────────────────────────────
+  messages: defineTable({
+    chatId: v.id("chats"),
+    authorUserId: v.optional(v.id("users")),
+    authorGuestId: v.optional(v.id("guests")),
+    authorName: v.string(),
+    body: v.string(),
+    attachmentStorageId: v.optional(v.id("_storage")),
+    replyToMessageId: v.optional(v.id("messages")),
+    editedAt: v.optional(v.number()),
+    deletedAt: v.optional(v.number()),
+  }).index("by_chatId", ["chatId"]),
 
   // ───────────────────────────────────────────────────────────────────────
   // portalViews — tracks views and interactions on guest portals.
