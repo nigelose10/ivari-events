@@ -108,3 +108,16 @@ temp/
 
 # Webdev artifacts (checkpoint zips, migrations, etc.)
 .webdev/
+
+# Convex (codegen + local dev state)
+convex/_generated/
+.convex/
+
+# Vercel
+.vercel/
+
+# PWA build artifacts (vite-plugin-pwa generates these into public/)
+dev-dist/
+client/public/sw.js
+client/public/workbox-*.js
+client/public/registerSW.js

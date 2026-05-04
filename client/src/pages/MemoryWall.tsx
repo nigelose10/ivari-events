@@ -1,3 +1,14 @@
+/**
+ * MemoryWall — post-event photographic surface.
+ *
+ * TODO (deferred — see DESIGN-AUDIT.md):
+ * - [ ] Audit masonry gap — should be var(--space-6) for breathing rhythm
+ * - [ ] Lightbox transition: layoutId + custom enter/exit instead of default fade
+ * - [ ] Photo frames: drop the hard border, use only the inset highlight from
+ *       .glass for refraction-edge feel
+ * - [ ] Empty state: show ghost masonry skeletons (.shimmer) until first upload
+ * - [ ] Upload preview: full-screen sheet on mobile, side-panel on desktop
+ */
 import { useState, useCallback, useMemo, useRef } from "react";
 import { trpc } from "@/lib/trpc";
 import { GlassCard } from "@/components/GlassCard";

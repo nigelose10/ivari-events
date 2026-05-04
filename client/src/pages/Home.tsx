@@ -1,3 +1,16 @@
+/**
+ * Home — Ledger / unauth landing.
+ *
+ * TODO (deferred — see DESIGN-AUDIT.md):
+ * - [ ] Replace IVARI wordmark gradient (currently blue→purple→magenta — banned).
+ *       Use warm amber: from-[var(--primary)] via-[var(--rose-gold)] to-[var(--primary)]
+ * - [ ] Hardcoded oklch(0.5_0.02_265) cool-gray secondary text → var(--text-secondary)
+ * - [ ] Spinner loader → card shimmer skeletons in Ledger
+ * - [ ] Increase wordmark→subhead gap from 48px to 96px (landing breathing room)
+ * - [ ] EventCard hero image is too small (28–36px) — bump to 40% of card width
+ * - [ ] Status badge should overlay the image top-right, not sit next to title
+ * - [ ] Empty state Sparkles icon → outline-only, monochrome
+ */
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { GlassCard } from "@/components/GlassCard";

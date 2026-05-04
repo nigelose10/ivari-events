@@ -1,3 +1,18 @@
+/**
+ * Forge — multi-step event creation flow.
+ *
+ * TODO (deferred — see DESIGN-AUDIT.md):
+ * - [ ] CRITICAL: replace emoji template glyphs (line ~293, ~322) with Lucide
+ *       icons (Cake, Wine, Building2, Heart, Music, Star). Emoji as
+ *       decoration is on the banned list.
+ * - [ ] CRITICAL: "Blank Canvas" sparkle (line ~293) is decorative emoji — replace.
+ * - [ ] Step 1 "Generate Vibe" pill needs glowing accent border (currently flat)
+ * - [ ] Stepper dots at top: reduce visual noise — only show label on active step
+ * - [ ] All step heading h2's: pin to .display-3 utility for consistent scale
+ * - [ ] All `text-warm-muted` literals are fine (they map to a token) — audit
+ *       any remaining `text-[oklch(...)]` literals against tokens
+ * - [ ] Color picker swatches: use ring-offset for active state instead of border
+ */
 import { useState, useRef, useCallback, useMemo } from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";

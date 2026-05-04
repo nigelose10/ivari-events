@@ -1,3 +1,12 @@
+/**
+ * CheckIn — door-mode workmanlike scanner surface.
+ *
+ * TODO (deferred — see DESIGN-AUDIT.md):
+ * - [ ] Bottom-priority for visual elevation; functionality first
+ * - [ ] Status feedback (success/fail) animations: brief glow strengthen,
+ *       no bounce
+ * - [ ] Large-tap-target check: every interactive ≥ 44x44pt
+ */
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { AmbientBackground } from "@/components/AmbientBackground";

@@ -5,6 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { defineConfig, type Plugin, type ViteDevServer } from "vite";
 import { vitePluginManusRuntime } from "vite-plugin-manus-runtime";
+import { VitePWA } from "vite-plugin-pwa";
 
 // =============================================================================
 // Manus Debug Collector - Vite Plugin
@@ -150,7 +151,102 @@ function vitePluginManusDebugCollector(): Plugin {
   };
 }
 
-const plugins = [react(), tailwindcss(), jsxLocPlugin(), vitePluginManusRuntime(), vitePluginManusDebugCollector()];
+const plugins = [
+  react(),
+  tailwindcss(),
+  jsxLocPlugin(),
+  vitePluginManusRuntime(),
+  vitePluginManusDebugCollector(),
+  VitePWA({
+    registerType: "autoUpdate",
+    injectRegister: "auto",
+    // We hand-author the manifest in client/public/manifest.webmanifest for fine-grained control.
+    manifest: false,
+    devOptions: {
+      enabled: true,
+      type: "module",
+    },
+    workbox: {
+      globPatterns: ["**/*.{js,css,html,ico,png,svg,webp,woff,woff2}"],
+      // Bump precache size cap to 5 MiB — IVARI's main bundle is ~2.8 MB.
+      // TODO: route-level React.lazy code-splitting will get us back under default 2 MiB.
+      maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+      navigateFallback: "/index.html",
+      navigateFallbackDenylist: [/^\/api\//, /^\/trpc\//, /^\/__manus__\//],
+      cleanupOutdatedCaches: true,
+      runtimeCaching: [
+        // Convex queries — fresh data preferred, fall back to cache when offline
+        {
+          urlPattern: /^https:\/\/.*\.convex\.cloud\/.*/i,
+          handler: "NetworkFirst",
+          options: {
+            cacheName: "convex-queries",
+            networkTimeoutSeconds: 10,
+            expiration: {
+              maxEntries: 50,
+              maxAgeSeconds: 60 * 60 * 24, // 24 hours
+            },
+            cacheableResponse: { statuses: [0, 200] },
+          },
+        },
+        // Generated AI images (Nano Banana / Google generated content URLs) — long-lived, immutable
+        {
+          urlPattern:
+            /^https:\/\/.*(generativelanguage\.googleapis\.com|nanobanana|generated-images|googleusercontent\.com|aistudio).*/i,
+          handler: "CacheFirst",
+          options: {
+            cacheName: "ai-generated-images",
+            expiration: {
+              maxEntries: 200,
+              maxAgeSeconds: 60 * 60 * 24 * 30, // 30 days
+            },
+            cacheableResponse: { statuses: [0, 200] },
+          },
+        },
+        // Google Fonts stylesheets
+        {
+          urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
+          handler: "StaleWhileRevalidate",
+          options: {
+            cacheName: "google-fonts-stylesheets",
+            expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 365 },
+            cacheableResponse: { statuses: [0, 200] },
+          },
+        },
+        // Google Fonts files
+        {
+          urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
+          handler: "CacheFirst",
+          options: {
+            cacheName: "google-fonts-webfonts",
+            expiration: { maxEntries: 30, maxAgeSeconds: 60 * 60 * 24 * 365 },
+            cacheableResponse: { statuses: [0, 200] },
+          },
+        },
+        // Static assets — JS / CSS
+        {
+          urlPattern: /\.(?:js|css)$/i,
+          handler: "StaleWhileRevalidate",
+          options: {
+            cacheName: "static-resources",
+            expiration: { maxEntries: 60, maxAgeSeconds: 60 * 60 * 24 * 7 },
+            cacheableResponse: { statuses: [0, 200] },
+          },
+        },
+        // Images (png/svg/webp/jpg)
+        {
+          urlPattern: /\.(?:png|svg|webp|jpg|jpeg|gif|ico)$/i,
+          handler: "StaleWhileRevalidate",
+          options: {
+            cacheName: "image-assets",
+            expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 * 30 },
+            cacheableResponse: { statuses: [0, 200] },
+          },
+        },
+      ],
+    },
+  }),
+];
 
 export default defineConfig({
   plugins,

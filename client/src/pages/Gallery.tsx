@@ -1,3 +1,12 @@
+/**
+ * Gallery — preview/sharing surface.
+ *
+ * TODO (deferred — see DESIGN-AUDIT.md):
+ * - [ ] Lock grid to 12-column with var(--space-6) gap
+ * - [ ] Replace any `text-[oklch(...265)]` cool-gray literals with --text-secondary
+ * - [ ] Apply .display-3 to section heading
+ * - [ ] Card hover: lift + glow, never scale (per tokens)
+ */
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { GlassCard } from "@/components/GlassCard";

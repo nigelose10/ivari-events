@@ -1,3 +1,12 @@
+/**
+ * ComponentShowcase — internal design system reference.
+ *
+ * TODO (deferred — see DESIGN-AUDIT.md):
+ * - [ ] After tokens finalize, this surface becomes the canonical reference doc
+ * - [ ] Add a "Tokens" section at the top: type scale, spacing, motion, palette
+ * - [ ] Add a "Glass Recipe" section showing default vs elevated side-by-side
+ * - [ ] Show every status badge / button variant on the warm dark base
+ */
 import {
   Accordion,
   AccordionContent,

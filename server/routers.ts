@@ -75,6 +75,12 @@ function hashVisitor(ip: string, ua: string): string {
 
 export const appRouter = router({
   system: systemRouter,
+  // TODO(stack-auth): DELETE the auth.me and auth.logout routes.
+  // Stack Auth handles session lookup via useUser() on the client and
+  // sign-out via currentUser.signOut() (or the /handler/sign-out route).
+  // The hook in client/src/_core/hooks/useAuth.ts no longer calls these.
+  // Once nothing references trpc.auth.* anywhere, remove this whole block
+  // and drop COOKIE_NAME / getSessionCookieOptions imports above.
   auth: router({
     me: publicProcedure.query((opts) => opts.ctx.user),
     logout: publicProcedure.mutation(({ ctx }) => {

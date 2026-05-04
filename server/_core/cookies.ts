@@ -1,3 +1,10 @@
+/**
+ * @deprecated TODO(stack-auth): DELETE THIS FILE.
+ *
+ * Stack Auth manages its own session cookies via the StackClientApp's
+ * tokenStore: "cookie" config (see client/src/stack.ts). This file is
+ * dead code once oauth.ts and the auth.logout tRPC route are removed.
+ */
 import type { CookieOptions, Request } from "express";
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);

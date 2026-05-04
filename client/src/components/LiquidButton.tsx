@@ -2,6 +2,15 @@ import { useRef, useCallback, type ReactNode } from "react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 
+/**
+ * LiquidButton — refined to lock the brand palette (warm amber, no purple).
+ *
+ * Aligned to design tokens in index.css:
+ * - Primary: warm amber gradient (var(--primary) → var(--rose-gold))
+ * - Hover: lift 2px + glow strengthen (NOT scale)
+ * - Tap: subtle scale-down 0.98 for tactile feel
+ * - Variant CSS uses CSS variables only — no hard-coded oklch tuples
+ */
 interface LiquidButtonProps {
   children: ReactNode;
   variant?: "primary" | "ghost" | "glass" | "danger";
@@ -20,16 +29,7 @@ const sizeClasses = {
   xl: "px-10 py-4.5 text-lg rounded-2xl",
 };
 
-const variantClasses = {
-  primary:
-    "bg-gradient-to-r from-[oklch(0.5_0.22_260)] via-[oklch(0.55_0.2_280)] to-[oklch(0.52_0.2_310)] text-white shadow-[0_4px_24px_oklch(0.5_0.2_280/30%)]",
-  ghost:
-    "bg-transparent text-foreground hover:bg-[oklch(1_0_0/6%)]",
-  glass:
-    "glass text-foreground",
-  danger:
-    "bg-gradient-to-r from-[oklch(0.5_0.2_15)] to-[oklch(0.55_0.18_30)] text-white shadow-[0_4px_24px_oklch(0.5_0.2_20/25%)]",
-};
+const EASE = [0.22, 1, 0.36, 1] as const;
 
 export function LiquidButton({
   children,
@@ -56,22 +56,65 @@ export function LiquidButton({
     [onClick]
   );
 
+  // Variant styles — bound to CSS variables so per-event accent overrides cascade.
+  const variantStyles: Record<string, React.CSSProperties> = {
+    primary: {
+      background:
+        "linear-gradient(135deg, var(--event-accent, var(--primary)) 0%, var(--rose-gold) 100%)",
+      color: "var(--primary-foreground)",
+      boxShadow:
+        "0 4px 24px var(--event-accent-glow, var(--primary-glow)), inset 0 1px 0 0 oklch(1 0 0 / 22%)",
+    },
+    ghost: {
+      background: "transparent",
+      color: "var(--text-primary)",
+    },
+    glass: {
+      // Inherits .glass via class — no inline background.
+      color: "var(--text-primary)",
+    },
+    danger: {
+      background:
+        "linear-gradient(135deg, var(--destructive) 0%, oklch(0.60 0.18 18) 100%)",
+      color: "oklch(0.98 0 0)",
+      boxShadow:
+        "0 4px 24px oklch(0.66 0.20 28 / 28%), inset 0 1px 0 0 oklch(1 0 0 / 18%)",
+    },
+  };
+
+  const variantClass = variant === "glass" ? "glass" : variant === "ghost" ? "hover:bg-[oklch(1_0_0/6%)]" : "";
+
   return (
     <motion.button
       ref={ref}
       type={type}
       className={cn(
-        "liquid-btn font-medium relative overflow-hidden tracking-[-0.01em]",
+        "liquid-btn font-medium relative overflow-hidden tracking-[-0.005em] inline-flex items-center justify-center",
         sizeClasses[size],
-        variantClasses[variant],
-        (disabled || loading) && "opacity-40 pointer-events-none",
+        variantClass,
+        (disabled || loading) && "opacity-40 pointer-events-none cursor-not-allowed",
         className
       )}
+      style={variantStyles[variant]}
       onClick={handleClick}
       disabled={disabled || loading}
-      whileHover={{ scale: 1.015 }}
+      // Hover: lift + glow strengthen (no scale). Per the brief.
+      whileHover={
+        disabled || loading
+          ? undefined
+          : {
+              y: -2,
+              boxShadow:
+                variant === "primary"
+                  ? "0 12px 40px var(--event-accent-glow, var(--primary-glow)), inset 0 1px 0 0 oklch(1 0 0 / 28%)"
+                  : variant === "danger"
+                  ? "0 12px 40px oklch(0.66 0.20 28 / 36%), inset 0 1px 0 0 oklch(1 0 0 / 22%)"
+                  : undefined,
+              transition: { duration: 0.3, ease: EASE },
+            }
+      }
       whileTap={{ scale: 0.98 }}
-      transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+      transition={{ duration: 0.3, ease: EASE }}
     >
       {loading ? (
         <span className="flex items-center justify-center gap-2.5">
@@ -80,7 +123,7 @@ export function LiquidButton({
             animate={{ rotate: 360 }}
             transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
           />
-          <span className="opacity-80">Processing...</span>
+          <span className="opacity-80">Processing</span>
         </span>
       ) : (
         children

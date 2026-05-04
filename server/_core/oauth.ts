@@ -1,3 +1,17 @@
+/**
+ * @deprecated TODO(stack-auth): DELETE THIS FILE.
+ *
+ * Replaced by Stack Auth — sessions are now issued and verified by Stack,
+ * the /handler/* routes (mounted in client/src/App.tsx) handle sign-in,
+ * sign-up, sign-out, OAuth callbacks, etc. Server-side Express no longer
+ * needs to participate in the OAuth dance.
+ *
+ * To remove cleanly:
+ *   1. Stop calling registerOAuthRoutes() from server/_core/index.ts
+ *   2. Delete this file and ./cookies.ts
+ *   3. Drop the COOKIE_NAME constant from @shared/const
+ *   4. Delete server/auth.logout.test.ts
+ */
 import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
 import type { Express, Request, Response } from "express";
 import * as db from "../db";

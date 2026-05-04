@@ -1,3 +1,18 @@
+/**
+ * Pulse — event management dashboard (host-facing).
+ *
+ * TODO (deferred — see DESIGN-AUDIT.md):
+ * - [ ] Status-action buttons (Go Live / Cancel / Restore / Reactivate) hard-code
+ *       12+ inline oklch tuples — extract to <StatusActionButton> with semantic
+ *       variants (success / warning / destructive)
+ * - [ ] Tab navigation should sticky on scroll for true dashboard feel
+ * - [ ] Recharts components need explicit dark-theme color array using
+ *       var(--chart-1..5) — defaults will look wrong on the warm dark base
+ * - [ ] Mobile: tabs become bottom nav (PWA standalone target)
+ * - [ ] Guest list table: uppercase column headers should use .eyebrow class
+ * - [ ] Notification history rows: timestamp gets var(--text-faint), not the
+ *       cool-gray oklch literal
+ */
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
