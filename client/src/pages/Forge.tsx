@@ -15,7 +15,8 @@
  */
 import { useState, useRef, useCallback, useMemo } from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { trpc } from "@/lib/trpc";
+import { useQuery, useMutation } from "convex/react";
+import { api } from "../../../convex/_generated/api";
 import { GlassCard } from "@/components/GlassCard";
 import { LiquidButton } from "@/components/LiquidButton";
 import { AmbientBackground } from "@/components/AmbientBackground";
@@ -73,10 +74,10 @@ export default function Forge() {
 
   // Template state
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
-  const templatesQuery = trpc.templates.list.useQuery();
-  const templateDetailQuery = trpc.templates.get.useQuery(
-    { id: selectedTemplateId || "" },
-    { enabled: !!selectedTemplateId }
+  const templates = useQuery(api.templates.list);
+  const templateDetail = useQuery(
+    api.templates.get,
+    selectedTemplateId ? { id: selectedTemplateId } : "skip"
   );
 
   // Form state
@@ -104,39 +105,65 @@ export default function Forge() {
   const markerRef = useRef<google.maps.marker.AdvancedMarkerElement | null>(null);
   const autocompleteInputRef = useRef<HTMLInputElement | null>(null);
 
-  const generateMutation = trpc.nanoBanana.generate.useMutation({
-    onSuccess: (data) => {
-      setImageUrl(data.imageUrl || null);
-      setImagePrompt(data.prompt);
-    },
-    onError: (err) => toast.error("Image generation failed: " + err.message),
-  });
+  // Native image upload via Convex storage (replaces Nano Banana per V7 directive)
+  const generateUploadUrl = useMutation(api.photos.generateUploadUrl);
+  const createEvent = useMutation(api.events.create);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
 
-  const createMutation = trpc.events.create.useMutation({
-    onSuccess: (data) => {
-      toast.success("Event launched!");
-      navigate(`/pulse/${data.id}`);
-    },
-    onError: (err) => toast.error("Failed to create event: " + err.message),
-  });
+  // Compatibility shim: `createMutation` and `generateMutation` are referenced
+  // throughout the JSX. Provide minimal pending-flag adapters.
+  const createMutation = { isPending: isCreating };
+  const generateMutation = { isPending: isUploading };
+
+  const handleImageUpload = useCallback(async (file: File) => {
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please select an image file");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("Image must be under 10 MB");
+      return;
+    }
+    setIsUploading(true);
+    try {
+      const uploadUrl = await generateUploadUrl();
+      const result = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!result.ok) throw new Error("Upload failed");
+      const { storageId } = await result.json();
+      // Store the storageId in imagePrompt as a temp marker, and use a blob URL
+      // for preview. Real `imageStorageId` field on event will be wired when
+      // the schema migration lands; for now we ride on imageUrl with a blob.
+      setImageUrl(URL.createObjectURL(file));
+      setImagePrompt(storageId);
+      toast.success("Image uploaded");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setIsUploading(false);
+    }
+  }, [generateUploadUrl]);
 
   const applyTemplate = useCallback(() => {
-    if (!templateDetailQuery.data) return;
-    const tpl = templateDetailQuery.data;
+    if (!templateDetail) return;
+    const tpl = templateDetail;
     if (!title) setTitle(tpl.titlePlaceholder);
     if (!description) setDescription(tpl.suggestedDescription);
     if (surveyQuestions.length === 0 && tpl.surveyQuestions.length > 0) {
       setSurveyQuestions(tpl.surveyQuestions);
     }
     if (tpl.accentColor) setThemeColor(tpl.accentColor);
-  }, [templateDetailQuery.data, title, description, surveyQuestions.length]);
+  }, [templateDetail, title, description, surveyQuestions.length]);
 
+  // Trigger hidden file input for cover image upload
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const handleGenerate = useCallback(() => {
-    if (!title.trim()) { toast.error("Enter a title first"); return; }
-    const tpl = templateDetailQuery.data;
-    const subject = tpl ? `${title.trim()}, ${tpl.nanoBananaPrompt}` : title.trim();
-    generateMutation.mutate({ subject });
-  }, [title, generateMutation, templateDetailQuery.data]);
+    fileInputRef.current?.click();
+  }, []);
 
   const handleMapReady = useCallback((map: google.maps.Map) => {
     mapRef.current = map;
@@ -173,25 +200,40 @@ export default function Forge() {
       const dateStr = eventTime ? `${eventDate}T${eventTime}` : `${eventDate}T00:00`;
       dateMs = new Date(dateStr).getTime();
     }
-    createMutation.mutate({
-      title: title.trim(),
-      description: description.trim() || undefined,
-      imageUrl: imageUrl || undefined,
-      imagePrompt: imagePrompt || undefined,
-      eventDate: dateMs,
-      locationName: locationName || undefined,
-      locationLat: locationLat || undefined,
-      locationLng: locationLng || undefined,
-      locationPlaceId: locationPlaceId || undefined,
-      maxCapacity: maxCapacity || undefined,
-      rsvpDeadline: rsvpDeadlineDate ? new Date(rsvpDeadlineTime ? `${rsvpDeadlineDate}T${rsvpDeadlineTime}` : `${rsvpDeadlineDate}T23:59`).getTime() : undefined,
-      surveyConfig: surveyQuestions.length > 0 ? surveyQuestions : undefined,
-      status: "active",
-      templateId: selectedTemplateId || undefined,
-      themeColor: themeColor || undefined,
-      language: language || undefined,
-    });
-  }, [title, description, imageUrl, imagePrompt, eventDate, eventTime, locationName, locationLat, locationLng, locationPlaceId, maxCapacity, rsvpDeadlineDate, rsvpDeadlineTime, surveyQuestions, createMutation, selectedTemplateId, themeColor, language]);
+    setIsCreating(true);
+    (async () => {
+      try {
+        const result = await createEvent({
+          title: title.trim(),
+          description: description.trim() || undefined,
+          imageUrl: imageUrl || undefined,
+          imagePrompt: imagePrompt || undefined,
+          eventDate: dateMs,
+          locationName: locationName || undefined,
+          locationLat: locationLat || undefined,
+          locationLng: locationLng || undefined,
+          locationPlaceId: locationPlaceId || undefined,
+          maxCapacity: maxCapacity || undefined,
+          rsvpDeadline: rsvpDeadlineDate
+            ? new Date(rsvpDeadlineTime ? `${rsvpDeadlineDate}T${rsvpDeadlineTime}` : `${rsvpDeadlineDate}T23:59`).getTime()
+            : undefined,
+          surveyConfig: surveyQuestions.length > 0 ? surveyQuestions : undefined,
+          status: "active" as const,
+          templateId: selectedTemplateId || undefined,
+          themeColor: themeColor || undefined,
+          language: language || undefined,
+        });
+        toast.success("Event launched!");
+        // Convex returns the new event id; route to /pulse/:slug if available, else /pulse/:id
+        const id = (result as any)?.slug ?? (result as any)?.id ?? result;
+        navigate(`/pulse/${id}`);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Failed to create event");
+      } finally {
+        setIsCreating(false);
+      }
+    })();
+  }, [title, description, imageUrl, imagePrompt, eventDate, eventTime, locationName, locationLat, locationLng, locationPlaceId, maxCapacity, rsvpDeadlineDate, rsvpDeadlineTime, surveyQuestions, createEvent, selectedTemplateId, themeColor, language, navigate]);
 
   const addPresetQuestion = (preset: SurveyQuestion) => {
     if (surveyQuestions.find(q => q.id === preset.id)) { toast.error("Already added"); return; }
@@ -223,14 +265,14 @@ export default function Forge() {
 
   const goNext = () => {
     if (stepIndex >= STEPS.length - 1) return;
-    if (step === "template" && selectedTemplateId && templateDetailQuery.data) {
+    if (step === "template" && selectedTemplateId && templateDetail) {
       applyTemplate();
     }
     setStep(STEPS[stepIndex + 1]);
   };
   const goBack = () => { if (stepIndex > 0) setStep(STEPS[stepIndex - 1]); };
 
-  const templates = templatesQuery.data || [];
+  const templatesList = templates ?? [];
 
   // Dynamic accent style
   const accentStyle = { "--event-accent": themeColor, "--event-accent-glow": `${themeColor}33` } as React.CSSProperties;
@@ -238,6 +280,19 @@ export default function Forge() {
   return (
     <div className="min-h-screen relative" style={accentStyle}>
       <AmbientBackground />
+
+      {/* Hidden file input — triggered by handleGenerate (the cover-image button) */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) handleImageUpload(file);
+          e.target.value = "";
+        }}
+      />
 
       {/* ─── Minimal Header ─── */}
       <header className="relative z-10 pt-8 sm:pt-12 pb-2 px-6">
@@ -317,7 +372,7 @@ export default function Forge() {
 
                 {/* Template Grid */}
                 <div className="grid grid-cols-2 gap-4">
-                  {templates.map((tpl, i) => (
+                  {templatesList.map((tpl: any, i: number) => (
                     <motion.button
                       key={tpl.id}
                       initial={{ opacity: 0, y: 20 }}
@@ -598,7 +653,7 @@ export default function Forge() {
 
                 {selectedTemplateId && surveyQuestions.length > 0 && (
                   <div className="text-center text-xs text-warm-muted">
-                    Pre-filled from your <strong className="text-foreground">{templateDetailQuery.data?.name}</strong> template
+                    Pre-filled from your <strong className="text-foreground">{templateDetail?.name}</strong> template
                   </div>
                 )}
 
@@ -688,7 +743,7 @@ export default function Forge() {
                       <div className="absolute inset-0 bg-gradient-to-t from-[oklch(0.04_0.01_280/95%)] via-[oklch(0.04_0.01_280/30%)] to-transparent" />
                       <div className="absolute bottom-0 left-0 right-0 p-6 sm:p-8">
                         <p className="text-xs font-medium tracking-[0.1em] uppercase mb-2" style={{ color: themeColor }}>
-                          {selectedTemplateId && templateDetailQuery.data ? templateDetailQuery.data.name : "Custom Event"}
+                          {selectedTemplateId && templateDetail ? templateDetail.name : "Custom Event"}
                         </p>
                         <h3 className="text-2xl sm:text-3xl font-bold tracking-[-0.02em]">{title}</h3>
                       </div>

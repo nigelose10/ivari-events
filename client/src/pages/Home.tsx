@@ -12,7 +12,9 @@
  * - [ ] Empty state Sparkles icon → outline-only, monochrome
  */
 import { useAuth } from "@/_core/hooks/useAuth";
-import { trpc } from "@/lib/trpc";
+import { useQuery, useMutation } from "convex/react";
+import { api } from "../../../convex/_generated/api";
+import { useState } from "react";
 import { GlassCard } from "@/components/GlassCard";
 import { LiquidButton } from "@/components/LiquidButton";
 import { AmbientBackground } from "@/components/AmbientBackground";
@@ -69,20 +71,32 @@ function formatRelative(ms: number) {
 export default function Home() {
   const { user, loading: authLoading, isAuthenticated, logout } = useAuth();
   const [, navigate] = useLocation();
-  const utils = trpc.useUtils();
 
-  const eventsQuery = trpc.events.list.useQuery(undefined, {
-    enabled: isAuthenticated,
-  });
+  // Convex reactive query — auto-subscribes; pass "skip" when unauthenticated.
+  const events = useQuery(api.events.list, isAuthenticated ? {} : "skip");
+  const eventsQuery = {
+    data: events,
+    isLoading: isAuthenticated && events === undefined,
+  };
 
-  const duplicateMut = trpc.events.duplicate.useMutation({
-    onSuccess: (data) => {
-      toast.success("Event duplicated as draft");
-      utils.events.list.invalidate();
-      navigate(`/pulse/${data.id}`);
+  const duplicateEvent = useMutation(api.events.duplicate);
+  const [isDuplicating, setIsDuplicating] = useState(false);
+  const duplicateMut = {
+    isPending: isDuplicating,
+    mutate: async (input: { eventId: string; cloneGuests?: boolean }) => {
+      setIsDuplicating(true);
+      try {
+        const result = await duplicateEvent(input as any);
+        const id = (result as any)?.slug ?? (result as any)?.id ?? result;
+        toast.success("Event duplicated as draft");
+        navigate(`/pulse/${id}`);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Duplicate failed");
+      } finally {
+        setIsDuplicating(false);
+      }
     },
-    onError: (err) => toast.error(err.message),
-  });
+  };
 
   // ─── Unauthenticated Landing ───
   if (!authLoading && !isAuthenticated) {
@@ -121,9 +135,9 @@ export default function Home() {
               animate={{ opacity: 1 }}
               transition={{ delay: 0.4, duration: 0.8 }}
             >
-              Craft extraordinary gatherings with
+              Craft extraordinary gatherings —
               <br />
-              AI-generated environments.
+              effortless invitations, unforgettable nights.
             </motion.p>
 
             <motion.div
@@ -140,7 +154,7 @@ export default function Home() {
                 <ArrowRight className="w-5 h-5" />
               </LiquidButton>
               <p className="text-xs text-[oklch(0.45_0.02_265)] mt-4 tracking-wide">
-                POWERED BY NANO BANANA
+                CRAFT EXTRAORDINARY GATHERINGS
               </p>
             </motion.div>
           </motion.div>
@@ -166,10 +180,10 @@ export default function Home() {
     );
   }
 
-  const events = eventsQuery.data || [];
-  const activeEvents = events.filter(e => e.status === "active");
-  const draftEvents = events.filter(e => e.status === "draft");
-  const otherEvents = events.filter(e => e.status !== "active" && e.status !== "draft");
+  const eventList: any[] = (eventsQuery.data || []) as any[];
+  const activeEvents = eventList.filter((e: any) => e.status === "active");
+  const draftEvents = eventList.filter((e: any) => e.status === "draft");
+  const otherEvents = eventList.filter((e: any) => e.status !== "active" && e.status !== "draft");
 
   return (
     <div className="min-h-screen relative">
@@ -232,7 +246,7 @@ export default function Home() {
       {/* ─── Events ─── */}
       <div className="relative z-10 px-6 pb-16">
         <div className="max-w-2xl mx-auto space-y-4">
-          {events.length === 0 ? (
+          {eventList.length === 0 ? (
             <GlassCard className="p-16 text-center" delay={0.2}>
               <div className="flex flex-col items-center gap-5">
                 <div className="w-16 h-16 rounded-2xl bg-[oklch(1_0_0/5%)] flex items-center justify-center">
@@ -311,7 +325,7 @@ function EventSection({
       >
         {label}
       </motion.p>
-      {events.map((event, i) => (
+      {eventList.map((event, i) => (
         <EventCard
           key={event.id}
           event={event}

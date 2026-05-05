@@ -15,7 +15,8 @@
  * No business logic touched: tRPC calls, mutations, hooks all preserved.
  */
 import { useState, useCallback, useMemo, useEffect } from "react";
-import { trpc } from "@/lib/trpc";
+import { useQuery, useAction, useMutation } from "convex/react";
+import { api } from "../../../convex/_generated/api";
 import { GlassCard } from "@/components/GlassCard";
 import { LiquidButton } from "@/components/LiquidButton";
 import { AmbientBackground } from "@/components/AmbientBackground";
@@ -105,18 +106,32 @@ export default function Portal() {
   const [submitted, setSubmitted] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
 
-  const eventQuery = trpc.events.getBySlug.useQuery({ slug }, { enabled: !!slug });
-  const countsQuery = trpc.rsvps.publicCounts.useQuery({ slug }, { enabled: !!slug });
-  const submitMutation = trpc.rsvps.submit.useMutation({
-    onSuccess: () => {
-      setSubmitted(true);
-      countsQuery.refetch();
-    },
-    onError: (err) => toast.error(err.message),
-  });
+  // Convex reactive queries — auto-update when underlying data changes.
+  const eventData = useQuery(api.events.getBySlug, slug ? { slug } : "skip");
+  const countsData = useQuery(api.rsvps.publicCounts, slug ? { slug } : "skip");
+  const eventQuery = { data: eventData, isLoading: !!slug && eventData === undefined };
+  const countsQuery = { data: countsData, refetch: () => {} /* no-op: Convex auto-refetches */ };
 
-  const event = eventQuery.data;
-  const counts = countsQuery.data;
+  // RSVP submit goes through an action (it verifies the guest JWT internally).
+  const submitWithToken = useAction(api.rsvps.submitWithToken);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const submitMutation = {
+    isPending: isSubmitting,
+    mutate: async (input: any) => {
+      setIsSubmitting(true);
+      try {
+        await submitWithToken(input);
+        setSubmitted(true);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Submit failed");
+      } finally {
+        setIsSubmitting(false);
+      }
+    },
+  };
+
+  const event = eventData;
+  const counts = countsData;
   const i18n = useTranslations(event?.language);
 
   // Apply event's custom theme color to the cascade
@@ -130,9 +145,13 @@ export default function Portal() {
   }, [event?.themeColor]);
 
   // Track portal view for analytics
-  const trackViewMut = trpc.analytics.trackView.useMutation();
+  const recordPortalView = useMutation(api.analytics.recordPortalView);
   useEffect(() => {
-    if (slug) trackViewMut.mutate({ slug });
+    if (slug) {
+      recordPortalView({ slug, page: "portal" } as any).catch(() => {
+        /* analytics is fire-and-forget; ignore failures */
+      });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]);
 
