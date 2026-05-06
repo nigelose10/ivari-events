@@ -11,6 +11,7 @@
 import type * as analytics from "../analytics.js";
 import type * as chats from "../chats.js";
 import type * as events from "../events.js";
+import type * as geocoding from "../geocoding.js";
 import type * as guestTokens from "../guestTokens.js";
 import type * as guests from "../guests.js";
 import type * as http from "../http.js";
@@ -33,6 +34,7 @@ declare const fullApi: ApiFromModules<{
   analytics: typeof analytics;
   chats: typeof chats;
   events: typeof events;
+  geocoding: typeof geocoding;
   guestTokens: typeof guestTokens;
   guests: typeof guests;
   http: typeof http;

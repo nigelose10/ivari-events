@@ -18,6 +18,8 @@
 import { v } from "convex/values";
 import * as jose from "jose";
 import { action, internalAction } from "./_generated/server";
+import { internal } from "./_generated/api";
+import type { Doc, Id } from "./_generated/dataModel";
 
 const ALGORITHM = "HS256";
 
@@ -102,5 +104,63 @@ export const verifyGuestTokenInternal = internalAction({
       result.guestId = payload.guestId as string;
     }
     return result;
+  },
+});
+
+/**
+ * Public action: mint a per-guest tracked invitation URL.
+ *
+ * Called from Pulse's guest-list "Copy Link" button. End-to-end:
+ *   1. Verify Stack Auth identity (host must be signed in).
+ *   2. Load guest + event via internal queries (actions can't db.get directly).
+ *   3. Confirm the caller is the event host (IDOR guard).
+ *   4. Sign a 90d HS256 JWT carrying { eventId, guestId, slug, access:"full" }
+ *      so the portal can pre-fill the RSVP form and mark the notification as
+ *      delivered when the guest opens the link.
+ *   5. Return `${origin}/portal/${slug}?gt=<jwt>`.
+ *
+ * The `gt=` query param is intentionally distinct from the legacy `token=`
+ * shared-portal param so the portal can branch behavior (per-guest vs
+ * anonymous shared link).
+ */
+export const mintGuestLink = action({
+  args: { guestId: v.id("guests"), origin: v.string() },
+  handler: async (ctx, { guestId, origin }): Promise<{ url: string }> => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthorized");
+
+    const guest: Doc<"guests"> | null = await ctx.runQuery(
+      internal.guests.getGuestForOwnerCheck,
+      { guestId },
+    );
+    if (!guest) throw new Error("Guest not found");
+
+    const event: Doc<"events"> | null = await ctx.runQuery(
+      internal.events.getEventForOwnerCheck,
+      { eventId: guest.eventId as Id<"events"> },
+    );
+    if (!event) throw new Error("Event not found");
+
+    const user: Doc<"users"> | null = await ctx.runQuery(
+      internal.events.getUserByTokenIdentifier,
+      { tokenIdentifier: identity.tokenIdentifier },
+    );
+    if (!user || event.hostId !== user._id) {
+      throw new Error("Forbidden");
+    }
+
+    const secret = getSecret();
+    const token = await new jose.SignJWT({
+      eventId: event._id,
+      slug: event.slug,
+      access: "full",
+      guestId,
+    })
+      .setProtectedHeader({ alg: ALGORITHM })
+      .setIssuedAt()
+      .setExpirationTime("90d")
+      .sign(secret);
+
+    return { url: `${origin}/portal/${event.slug}?gt=${token}` };
   },
 });

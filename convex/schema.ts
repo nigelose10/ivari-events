@@ -58,6 +58,12 @@ export default defineSchema({
     locationLat: v.optional(v.string()),
     locationLng: v.optional(v.string()),
     locationPlaceId: v.optional(v.string()),
+    /** Auto-geocoded latitude (decimal degrees) from `locationName` via Open-Meteo. */
+    latitude: v.optional(v.number()),
+    /** Auto-geocoded longitude (decimal degrees) from `locationName` via Open-Meteo. */
+    longitude: v.optional(v.number()),
+    /** Tracks the locationName we geocoded; bust if it changes. */
+    geocodedFrom: v.optional(v.string()),
     surveyConfig: v.optional(v.any()),
     status: v.union(
       v.literal("draft"),

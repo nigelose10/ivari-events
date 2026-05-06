@@ -14,7 +14,8 @@
  * read and return it as `imageUrl` so consumers don't need to change shape.
  */
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { mutation, query, internalQuery } from "./_generated/server";
+import { api } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 
@@ -290,6 +291,16 @@ export const create = mutation({
       updatedAt: Date.now(),
     });
 
+    // Schedule auto-geocoding of the free-text location → lat/lng so the
+    // WeatherWidget (which keys off `latitude`/`longitude`) becomes reachable.
+    // Runs after the mutation commits; failure is silent and non-blocking.
+    if (input.locationName) {
+      await ctx.scheduler.runAfter(0, api.geocoding.geocodeAndAttach, {
+        eventId,
+        locationName: input.locationName,
+      });
+    }
+
     // The legacy router signed a guest token here and returned it. Convex
     // mutations cannot sign JWTs (no Node crypto), so the client should call
     // `guestTokens.signGuestToken` after this with `{ eventId, slug, access:"full" }`.
@@ -326,7 +337,7 @@ export const update = mutation({
   },
   handler: async (ctx, { id, ...rest }) => {
     const user = await requireUser(ctx);
-    await requireOwnedEvent(ctx, id, user._id);
+    const event = await requireOwnedEvent(ctx, id, user._id);
 
     if (
       rest.title !== undefined &&
@@ -343,6 +354,16 @@ export const update = mutation({
       if (val !== undefined) patch[k] = val;
     }
     await ctx.db.patch(id, patch);
+
+    // Re-geocode only when the human-readable locationName actually changed
+    // since the last geocode pass — avoids hammering Open-Meteo on every save.
+    if (rest.locationName && rest.locationName !== event.geocodedFrom) {
+      await ctx.scheduler.runAfter(0, api.geocoding.geocodeAndAttach, {
+        eventId: id,
+        locationName: rest.locationName,
+      });
+    }
+
     return { success: true };
   },
 });
@@ -497,4 +518,28 @@ export const generateCoverUploadUrl = mutation({
     await requireUser(ctx);
     return ctx.storage.generateUploadUrl();
   },
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// Internal queries (called from actions, e.g. guestTokens.mintGuestLink)
+// ───────────────────────────────────────────────────────────────────────────
+
+/** Internal: fetch an event row for ownership checks performed inside actions.
+ *  No auth here — callers are responsible for verifying the caller owns it. */
+export const getEventForOwnerCheck = internalQuery({
+  args: { eventId: v.id("events") },
+  handler: async (ctx, { eventId }) => ctx.db.get(eventId),
+});
+
+/** Internal: resolve a `users` row from a Stack Auth tokenIdentifier.
+ *  Used by actions that need to compare `event.hostId` to the caller. */
+export const getUserByTokenIdentifier = internalQuery({
+  args: { tokenIdentifier: v.string() },
+  handler: async (ctx, { tokenIdentifier }) =>
+    ctx.db
+      .query("users")
+      .withIndex("by_tokenIdentifier", (q) =>
+        q.eq("tokenIdentifier", tokenIdentifier),
+      )
+      .unique(),
 });

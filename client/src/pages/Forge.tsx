@@ -21,10 +21,11 @@ import { GlassCard } from "@/components/GlassCard";
 import { LiquidButton } from "@/components/LiquidButton";
 import { AmbientBackground } from "@/components/AmbientBackground";
 import { MapView } from "@/components/Map";
+import { InvitationPreview } from "@/components/InvitationPreview";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft, ArrowRight, Sparkles, MapPin, Calendar, Check, Plus, Trash2,
-  ClipboardList, Image, Wand2, LayoutTemplate, Users, Palette,
+  ClipboardList, Image, Wand2, LayoutTemplate, Users, Palette, Eye,
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";

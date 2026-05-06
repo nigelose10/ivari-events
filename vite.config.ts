@@ -263,6 +263,19 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          "react-vendor": ["react", "react-dom", "react/jsx-runtime"],
+          "convex-vendor": ["convex/react", "convex/values"],
+          "auth-vendor": ["@stackframe/react"],
+          "ui-vendor": ["framer-motion", "lucide-react"],
+          "charts-vendor": ["recharts"],
+          "date-vendor": ["date-fns"],
+        },
+      },
+    },
   },
   server: {
     host: true,

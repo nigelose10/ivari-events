@@ -14,7 +14,7 @@
  * `guest.eventId === input.eventId`. V6 audit caught the gap; do not regress.
  */
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { mutation, query, internalQuery } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 
@@ -310,4 +310,15 @@ export const uncheckIn = mutation({
     });
     return { success: true };
   },
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// Internal queries (called from actions, e.g. guestTokens.mintGuestLink)
+// ───────────────────────────────────────────────────────────────────────────
+
+/** Internal: fetch a guest row from inside an action, before doing the
+ *  owner-check round-trip via events.getEventForOwnerCheck. */
+export const getGuestForOwnerCheck = internalQuery({
+  args: { guestId: v.id("guests") },
+  handler: async (ctx, { guestId }) => ctx.db.get(guestId),
 });

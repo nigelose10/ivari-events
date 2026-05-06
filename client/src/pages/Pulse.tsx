@@ -23,6 +23,7 @@ import { LiquidButton } from "@/components/LiquidButton";
 import { AmbientBackground } from "@/components/AmbientBackground";
 import { WeatherWidget } from "@/components/WeatherWidget";
 import { SegmentedControl } from "@/components/SegmentedControl";
+import { InvitationPreview } from "@/components/InvitationPreview";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft, Copy, Check, Users, UserCheck, UserX, HelpCircle,
@@ -82,6 +83,9 @@ export default function Pulse() {
   // Social Oracle state
   const [showOracle, setShowOracle] = useState(false);
 
+  // V7 Invitation preview overlay (host-side dry run of the guest experience).
+  const [previewOpen, setPreviewOpen] = useState(false);
+
   // ─── Convex queries ───
   const eventDoc = useQuery(api.events.get, eventId ? { id: eventId } : "skip");
   const countsData = useQuery(api.rsvps.getCounts, eventId ? { eventId } : "skip");
@@ -102,6 +106,7 @@ export default function Pulse() {
   const transitionStatus = useMutation(api.events.transitionStatus);
   const duplicateEvent = useMutation(api.events.duplicate);
   const generateQR = useAction(api.qrcode.generateAndStore);
+  const mintGuestLink = useAction(api.guestTokens.mintGuestLink);
 
   // Wrappers preserving the original .mutate({...}) ergonomics
   const updateMutation = {
@@ -189,7 +194,9 @@ export default function Pulse() {
     },
   };
   const oracleMut = { isPending: false, data: undefined as any, mutate: () => toast.info("Social Oracle (AI guest suggestions) coming soon.") };
-  const generatePreviewMut = { isPending: false, mutate: () => toast.info("Animated invitation preview coming soon.") };
+  // Animated invitation preview — opens the InvitationPreview overlay.
+  // Kept in `mutate` shape so the existing button JSX doesn't have to change.
+  const generatePreviewMut = { isPending: false, mutate: () => setPreviewOpen(true) };
   const guestLinkMutation = {
     isPending: false,
     mutateAsync: async () => {
@@ -270,16 +277,18 @@ export default function Pulse() {
   const handleCopyGuestLink = useCallback(async (guestId: string) => {
     if (!event) return;
     try {
-      // Per-guest tracked links require a Convex action — fall back to the shared portal link
-      const url = `${window.location.origin}/portal/${event.slug}`;
-      await navigator.clipboard.writeText(url);
+      const result = await mintGuestLink({
+        guestId: guestId as Id<"guests">,
+        origin: window.location.origin,
+      });
+      await navigator.clipboard.writeText(result.url);
       setCopiedGuestId(guestId);
-      toast.success("Portal link copied (per-guest tracking coming soon)");
+      toast.success("Personal invitation link copied!");
       setTimeout(() => setCopiedGuestId(null), 2000);
-    } catch {
-      toast.error("Failed to copy link");
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to mint link");
     }
-  }, [event]);
+  }, [event, mintGuestLink]);
 
   const toggleSms = useCallback(() => {
     if (!event) return;
@@ -1199,6 +1208,23 @@ export default function Pulse() {
           </AnimatePresence>
         </div>
       </div>
+
+      {/* V7 Invitation preview — animated dry-run of the guest experience */}
+      {event && (
+        <InvitationPreview
+          event={{
+            _id: event.id,
+            title: event.title,
+            description: event.description,
+            eventDate: event.eventDate,
+            locationName: event.locationName,
+            themeColor: event.themeColor,
+            imageUrl: event.imageUrl,
+          }}
+          open={previewOpen}
+          onOpenChange={setPreviewOpen}
+        />
+      )}
     </div>
   );
 }
