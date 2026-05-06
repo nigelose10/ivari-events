@@ -329,7 +329,7 @@ function EventSection({
       >
         {label}
       </motion.p>
-      {eventList.map((event, i) => (
+      {events.map((event, i) => (
         <EventCard
           key={event.id}
           event={event}
