@@ -1,30 +1,49 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="IVARI">
   <defs>
-    <linearGradient id="amber" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%"  stop-color="oklch(0.78 0.12 75)"/>
-      <stop offset="55%" stop-color="oklch(0.72 0.14 60)"/>
-      <stop offset="100%" stop-color="oklch(0.65 0.16 45)"/>
-    </linearGradient>
-    <radialGradient id="sheen" cx="0.32" cy="0.28" r="0.6">
-      <stop offset="0%"  stop-color="white" stop-opacity="0.32"/>
-      <stop offset="60%" stop-color="white" stop-opacity="0.04"/>
-      <stop offset="100%" stop-color="white" stop-opacity="0"/>
+    <!-- Warm amber radial glow, off-center upper-left for depth -->
+    <radialGradient id="glow" cx="0.5" cy="0.45" r="0.55">
+      <stop offset="0%"   stop-color="#d49866" stop-opacity="0.55"/>
+      <stop offset="45%"  stop-color="#a86b3d" stop-opacity="0.22"/>
+      <stop offset="100%" stop-color="#0d0a05" stop-opacity="0"/>
     </radialGradient>
+    <!-- Subtle cream sheen on the I stem -->
+    <linearGradient id="cream" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#fdfaf2"/>
+      <stop offset="100%" stop-color="#ece4d2"/>
+    </linearGradient>
   </defs>
 
-  <!-- pure black bg, edge-to-edge so iOS doesn't add jank -->
-  <rect width="512" height="512" fill="#000000"/>
+  <!-- Near-black warm background (oklch(0.05 0.015 60)) -->
+  <rect width="512" height="512" fill="#0d0a05"/>
 
-  <!-- amber-gradient circle (centered, ~80% safe zone) -->
-  <circle cx="256" cy="256" r="208" fill="url(#amber)"/>
-  <!-- specular sheen for liquid-glass feel -->
-  <circle cx="256" cy="256" r="208" fill="url(#sheen)"/>
+  <!-- Amber radial glow behind the mark -->
+  <rect width="512" height="512" fill="url(#glow)"/>
 
-  <!-- Monogram "I" — Cabinet Grotesk Extrabold parity, drawn as path so no font dep -->
-  <!-- Top serif bar -->
-  <rect x="186" y="146" width="140" height="28" rx="6" fill="#0a0a0a"/>
-  <!-- Stem -->
-  <rect x="240" y="146" width="32" height="220" rx="4" fill="#0a0a0a"/>
-  <!-- Bottom serif bar -->
-  <rect x="186" y="338" width="140" height="28" rx="6" fill="#0a0a0a"/>
+  <!-- Serif "I" — Didone-style with bracketed serifs.
+       Drawn as paths so there is no font dependency.
+       Designed to read at 32x32: stem ~14% of width, serif span ~36%. -->
+  <g fill="url(#cream)">
+    <!-- Top serif: wide bar with thin lower fillet for serif feel -->
+    <path d="M 154 138
+             L 358 138
+             L 358 168
+             L 296 168
+             L 296 178
+             L 216 178
+             L 216 168
+             L 154 168
+             Z"/>
+    <!-- Stem -->
+    <rect x="232" y="168" width="48" height="176"/>
+    <!-- Bottom serif: mirror of top -->
+    <path d="M 154 374
+             L 216 374
+             L 216 364
+             L 296 364
+             L 296 374
+             L 358 374
+             L 358 344
+             L 154 344
+             Z"/>
+  </g>
 </svg>
