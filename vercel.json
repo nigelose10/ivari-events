@@ -5,7 +5,7 @@
   "installCommand": "pnpm install --frozen-lockfile",
   "framework": null,
   "rewrites": [
-    { "source": "/((?!assets|icons|manifest.webmanifest|sw.js|workbox-.*).*)", "destination": "/index.html" }
+    { "source": "/((?!api/|assets/|icons/|favicon|manifest\\.webmanifest|sw\\.js|workbox-).*)", "destination": "/index.html" }
   ],
   "headers": [
     {
