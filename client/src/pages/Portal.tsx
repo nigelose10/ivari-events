@@ -12,6 +12,12 @@
  * - Tokens only — no inline oklch tuples beyond the per-status hue lookup,
  *   which now uses static class strings instead of runtime template literals.
  *
+ * V7 additions:
+ * - M1 Wax-Seal Envelope Reveal: first-time guests get a cinematic letter
+ *   opening before the portal fades in. Persisted per-slug in localStorage.
+ * - M3 RSVP Cinematic Climax: replaces the static "submitted" card with a
+ *   full-screen confirmation including calendar/maps CTAs.
+ *
  * No business logic touched: tRPC calls, mutations, hooks all preserved.
  */
 import { useState, useCallback, useMemo, useEffect } from "react";
@@ -20,6 +26,10 @@ import { api } from "../../../convex/_generated/api";
 import { GlassCard } from "@/components/GlassCard";
 import { LiquidButton } from "@/components/LiquidButton";
 import { AmbientBackground } from "@/components/AmbientBackground";
+import { WeatherWidget } from "@/components/WeatherWidget";
+import { EnvelopeReveal } from "@/components/EnvelopeReveal";
+import { RSVPClimax } from "@/components/RSVPClimax";
+import { hasSeenReveal, markRevealSeen } from "@/lib/envelopeReveal";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Calendar, MapPin, Users, Check, Heart, X, HelpCircle,
@@ -106,6 +116,15 @@ export default function Portal() {
   const [submitted, setSubmitted] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
 
+  // V7-M1: envelope reveal state. `revealed` flips after the wax-seal animation
+  // completes; we also pre-check localStorage so returning guests skip it.
+  const [revealed, setRevealed] = useState<boolean>(() =>
+    slug ? hasSeenReveal(slug) : true
+  );
+
+  // V7-M3: cinematic climax state. Set by handleSubmit on success.
+  const [rsvpClimax, setRsvpClimax] = useState<{ status: RsvpStatus } | null>(null);
+
   // Convex reactive queries — auto-update when underlying data changes.
   const eventData = useQuery(api.events.getBySlug, slug ? { slug } : "skip");
   const countsData = useQuery(api.rsvps.publicCounts, slug ? { slug } : "skip");
@@ -122,6 +141,8 @@ export default function Portal() {
       try {
         await submitWithToken(input);
         setSubmitted(true);
+        // V7-M3: trigger the cinematic climax overlay on success.
+        setRsvpClimax({ status: input.status as RsvpStatus });
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Submit failed");
       } finally {
@@ -175,6 +196,10 @@ export default function Portal() {
   const handleSubmit = useCallback(() => {
     if (!guestName.trim()) { toast.error("Please enter your name"); return; }
     if (!token) { toast.error("Invalid invitation link"); return; }
+    // Apple HIG haptic confirmation on RSVP submit (mobile only)
+    if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+      navigator.vibrate(10);
+    }
     submitMutation.mutate({
       token,
       guestName: guestName.trim(),
@@ -228,7 +253,11 @@ export default function Portal() {
   }
 
   // ─── Submitted (success) ───
-  if (submitted) {
+  // The cinematic <RSVPClimax> overlay is the primary post-submit surface.
+  // We keep this static fallback for when the overlay has been dismissed
+  // (so reload-state and screenshots still read sensibly) and when the
+  // memory wall CTA is configured.
+  if (submitted && !rsvpClimax) {
     const thankMsg =
       status === "attending" ? i18n.rsvpConfirmed
       : status === "maybe" ? i18n.rsvpMaybeMsg
@@ -292,9 +321,51 @@ export default function Portal() {
   }
 
   // ─── Main portal ───
+  // V7-M1 gate: until the wax-seal reveal completes, we still render the
+  // AmbientBackground beneath the EnvelopeReveal overlay so the curtain
+  // open transitions into a real surface, not a flash of empty black.
+  const showMainContent = revealed;
+
   return (
     <div className="min-h-[100dvh] relative">
       <AmbientBackground />
+
+      {/* V7-M1: wax-seal reveal — first-time guests only */}
+      {slug && !revealed && eventData && (
+        <EnvelopeReveal
+          eventTitle={eventData.title}
+          themeColor={eventData.themeColor || "oklch(0.75 0.15 55)"}
+          onComplete={() => {
+            markRevealSeen(slug);
+            setRevealed(true);
+          }}
+        />
+      )}
+
+      {/* V7-M3: cinematic climax — overlays the page after RSVP submit */}
+      {rsvpClimax && eventData && (
+        <RSVPClimax
+          event={{
+            title: eventData.title,
+            eventDate: eventData.eventDate,
+            locationName: eventData.locationName ?? undefined,
+            description: eventData.description ?? undefined,
+            themeColor: eventData.themeColor ?? undefined,
+          }}
+          rsvpStatus={rsvpClimax.status}
+          onClose={() => setRsvpClimax(null)}
+        />
+      )}
+
+      {/* Main content — hidden until reveal completes so the curtain pulls
+          back onto a clean composition, not a half-mounted hero. */}
+      <div
+        style={{
+          opacity: showMainContent ? 1 : 0,
+          transition: "opacity 600ms cubic-bezier(0.22, 1, 0.36, 1)",
+          pointerEvents: showMainContent ? "auto" : "none",
+        }}
+      >
 
       {/* ============================================================
           CINEMATIC HERO — full-bleed AI art, left-aligned headline,
@@ -395,6 +466,38 @@ export default function Portal() {
                   <p className="text-sm text-[var(--text-tertiary)]">
                     {format(new Date(event.eventDate), "h:mm a")}
                   </p>
+                  {/* V7-W4 — forecast pill for events ≤7 days out */}
+                  {(() => {
+                    const lat =
+                      typeof (event as any).latitude === "number"
+                        ? ((event as any).latitude as number)
+                        : (event as any).locationLat
+                        ? parseFloat((event as any).locationLat)
+                        : undefined;
+                    const lon =
+                      typeof (event as any).longitude === "number"
+                        ? ((event as any).longitude as number)
+                        : (event as any).locationLng
+                        ? parseFloat((event as any).locationLng)
+                        : undefined;
+                    if (
+                      lat === undefined ||
+                      lon === undefined ||
+                      !Number.isFinite(lat) ||
+                      !Number.isFinite(lon)
+                    )
+                      return null;
+                    return (
+                      <div className="mt-3">
+                        <WeatherWidget
+                          eventId={(event as any)._id}
+                          latitude={lat}
+                          longitude={lon}
+                          eventDateMs={event.eventDate as number}
+                        />
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
               {event.locationName && (
@@ -719,6 +822,7 @@ export default function Portal() {
           </div>
         </motion.section>
       )}
+      </div>
     </div>
   );
 }

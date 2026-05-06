@@ -161,7 +161,7 @@
   --glass-foreground:  oklch(0.94 0.018 75);
   --glass-border:      oklch(1 0 0 / 9%);
   --glass-highlight:   oklch(1 0 0 / 12%);
-  --glass-blur:        blur(50px) saturate(200%);
+  --glass-blur:        blur(80px) saturate(220%);
 
   /* ── Dynamic event accent (overridden per-event via inline style) ── */
   --event-accent:      oklch(0.78 0.14 65);
@@ -301,28 +301,57 @@
 
   /* ============================================================================
      LIQUID GLASS — Single recipe with two variants only
+     Each card now ships a top-edge specular highlight (::before sliver) and a
+     subtle inner gradient (::after) for refraction depth. Hover intensifies
+     the glow without shifting hue (HIG rule).
      ========================================================================== */
   .glass {
-    background: var(--glass);
+    position: relative;
+    background: linear-gradient(
+      180deg,
+      oklch(1 0 0 / 7%) 0%,
+      oklch(1 0 0 / 3%) 8%,
+      var(--glass) 100%
+    );
     backdrop-filter: var(--glass-blur);
     -webkit-backdrop-filter: var(--glass-blur);
     border: 1px solid var(--glass-border);
     box-shadow:
-      inset 0 1px 0 0 var(--glass-highlight),
+      /* Apple specular top-edge sliver + refractive inner highlights */
+      inset 0 1px 0 0 oklch(1 0 0 / 18%),
+      inset 0 2px 0 -1px oklch(1 0 0 / 8%),
       inset 0 0 0 0.5px oklch(1 0 0 / 4%),
+      inset 0 -1px 0 0 oklch(0 0 0 / 10%),
       0 8px 40px oklch(0 0 0 / 32%),
       0 0 0 0.5px oklch(1 0 0 / 3%);
     border-radius: var(--radius-lg);
   }
+  /* Glass-on-glass: nested .glass inherits a slightly different tint so depth
+     reads even when stacked (e.g. a glass button inside a glass card). */
+  .glass .glass {
+    background: linear-gradient(
+      180deg,
+      oklch(1 0 0 / 10%) 0%,
+      oklch(1 0 0 / 5%) 100%
+    );
+  }
 
   .glass-elevated {
-    background: oklch(1 0 0 / 6%);
-    backdrop-filter: blur(80px) saturate(220%);
-    -webkit-backdrop-filter: blur(80px) saturate(220%);
+    position: relative;
+    background: linear-gradient(
+      180deg,
+      oklch(1 0 0 / 10%) 0%,
+      oklch(1 0 0 / 5%) 8%,
+      oklch(1 0 0 / 6%) 100%
+    );
+    backdrop-filter: blur(120px) saturate(240%);
+    -webkit-backdrop-filter: blur(120px) saturate(240%);
     border: 1px solid oklch(1 0 0 / 14%);
     box-shadow:
-      inset 0 2px 0 0 oklch(1 0 0 / 14%),
-      inset 0 -1px 0 0 oklch(0 0 0 / 8%),
+      inset 0 1px 0 0 oklch(1 0 0 / 24%),
+      inset 0 2px 0 -1px oklch(1 0 0 / 10%),
+      inset 0 -1px 0 0 oklch(0 0 0 / 12%),
+      inset 0 0 0 0.5px oklch(1 0 0 / 5%),
       0 24px 80px oklch(0 0 0 / 42%),
       0 0 0 0.5px oklch(1 0 0 / 6%);
     border-radius: var(--radius-xl);
@@ -331,25 +360,41 @@
   /* Aliased older variants → mapped to canonical pair so existing code keeps rendering.
      Tailwind v4 doesn't allow @apply on non-utility classes, so we duplicate the rules. */
   .glass-subtle {
-    background: var(--glass);
+    position: relative;
+    background: linear-gradient(
+      180deg,
+      oklch(1 0 0 / 7%) 0%,
+      oklch(1 0 0 / 3%) 8%,
+      var(--glass) 100%
+    );
     backdrop-filter: var(--glass-blur);
     -webkit-backdrop-filter: var(--glass-blur);
     border: 1px solid var(--glass-border);
     box-shadow:
-      inset 0 1px 0 0 var(--glass-highlight),
+      inset 0 1px 0 0 oklch(1 0 0 / 18%),
+      inset 0 2px 0 -1px oklch(1 0 0 / 8%),
       inset 0 0 0 0.5px oklch(1 0 0 / 4%),
+      inset 0 -1px 0 0 oklch(0 0 0 / 10%),
       0 8px 40px oklch(0 0 0 / 32%),
       0 0 0 0.5px oklch(1 0 0 / 3%);
     border-radius: var(--radius-lg);
   }
   .glass-strong {
-    background: oklch(1 0 0 / 6%);
-    backdrop-filter: blur(80px) saturate(220%);
-    -webkit-backdrop-filter: blur(80px) saturate(220%);
+    position: relative;
+    background: linear-gradient(
+      180deg,
+      oklch(1 0 0 / 10%) 0%,
+      oklch(1 0 0 / 5%) 8%,
+      oklch(1 0 0 / 6%) 100%
+    );
+    backdrop-filter: blur(120px) saturate(240%);
+    -webkit-backdrop-filter: blur(120px) saturate(240%);
     border: 1px solid oklch(1 0 0 / 14%);
     box-shadow:
-      inset 0 2px 0 0 oklch(1 0 0 / 14%),
-      inset 0 -1px 0 0 oklch(0 0 0 / 8%),
+      inset 0 1px 0 0 oklch(1 0 0 / 24%),
+      inset 0 2px 0 -1px oklch(1 0 0 / 10%),
+      inset 0 -1px 0 0 oklch(0 0 0 / 12%),
+      inset 0 0 0 0.5px oklch(1 0 0 / 5%),
       0 24px 80px oklch(0 0 0 / 42%),
       0 0 0 0.5px oklch(1 0 0 / 6%);
     border-radius: var(--radius-xl);
@@ -1057,5 +1102,203 @@
     z-index: -3;
     opacity: 0;
     pointer-events: none;
+  }
+
+  /* ============================================================================
+     APPLE-STYLE GLASS POLISH PASS
+     Top-edge specular sliver, refractive border gradient, glass-on-glass tint.
+     ========================================================================== */
+
+  /* Static top-edge highlight applied as a utility — composes with any glass
+     surface that wants the wet-on-top look. Apply to GlassCard root. */
+  .glass-top-highlight {
+    position: relative;
+  }
+  .glass-top-highlight::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background: linear-gradient(
+      180deg,
+      oklch(1 0 0 / 8%) 0%,
+      oklch(1 0 0 / 2%) 6%,
+      transparent 12%
+    );
+    z-index: 1;
+  }
+
+  /* Refractive border — thin gradient ring suggests light bending around the edge.
+     Composes additively over .glass via ::after. */
+  .glass-refractive::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(
+      135deg,
+      oklch(1 0 0 / 18%) 0%,
+      oklch(1 0 0 / 4%) 40%,
+      oklch(1 0 0 / 10%) 100%
+    );
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+            mask-composite: exclude;
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  /* ============================================================================
+     APPLE FORM LIST — iOS-style grouped list rows for forms.
+     Used in Forge details / edit-event flow. Hairline separators, 17px text,
+     no per-row borders.
+     ========================================================================== */
+  .apple-list {
+    background: oklch(1 0 0 / 4%);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid oklch(1 0 0 / 8%);
+    border-radius: var(--radius-xl);
+    overflow: hidden;
+    box-shadow:
+      inset 0 1px 0 0 oklch(1 0 0 / 10%),
+      0 8px 40px oklch(0 0 0 / 28%);
+  }
+  .apple-list-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    padding: 14px 16px;
+    min-height: 56px;
+    position: relative;
+    font-family: var(--font-sans);
+    font-size: var(--text-headline); /* 17px Apple iOS body */
+    color: var(--text-primary);
+  }
+  .apple-list-row + .apple-list-row::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 16px;
+    right: 0;
+    height: 1px;
+    background: oklch(1 0 0 / 6%);
+    pointer-events: none;
+  }
+  .apple-list-row .apple-list-label {
+    font-size: var(--text-headline);
+    font-weight: 500;
+    color: var(--text-primary);
+    flex-shrink: 0;
+  }
+  .apple-list-row .apple-list-value {
+    margin-left: auto;
+    font-size: var(--text-headline);
+    color: var(--text-secondary);
+    text-align: right;
+  }
+  .apple-list-row input,
+  .apple-list-row select,
+  .apple-list-row textarea {
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text-primary);
+    font-size: var(--text-headline);
+    font-family: var(--font-sans);
+    flex: 1;
+    text-align: right;
+    padding: 0;
+  }
+  .apple-list-row input::placeholder {
+    color: var(--text-muted);
+  }
+  .apple-list-row input:focus,
+  .apple-list-row select:focus,
+  .apple-list-row textarea:focus {
+    outline: none;
+  }
+
+  /* ============================================================================
+     APPLE SEGMENTED CONTROL — pill background with sliding amber selector.
+     Used in Pulse tab switcher. Height 32px, 13px semibold.
+     ========================================================================== */
+  .apple-segmented {
+    display: inline-flex;
+    align-items: center;
+    height: 32px;
+    padding: 2px;
+    background: oklch(1 0 0 / 6%);
+    border: 1px solid oklch(1 0 0 / 8%);
+    border-radius: 10px;
+    backdrop-filter: blur(40px) saturate(180%);
+    -webkit-backdrop-filter: blur(40px) saturate(180%);
+    position: relative;
+    box-shadow:
+      inset 0 1px 0 0 oklch(1 0 0 / 8%),
+      0 4px 16px oklch(0 0 0 / 24%);
+  }
+  .apple-segmented-item {
+    position: relative;
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 28px;
+    padding: 0 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    transition: color var(--motion-fast) var(--ease);
+    white-space: nowrap;
+    background: transparent;
+    border: none;
+    outline: none;
+  }
+  .apple-segmented-item[data-active="true"] {
+    color: var(--primary-foreground);
+  }
+  .apple-segmented-item:not([data-active="true"]):hover {
+    color: var(--text-primary);
+  }
+  .apple-segmented-indicator {
+    position: absolute;
+    top: 2px;
+    bottom: 2px;
+    border-radius: 8px;
+    background: linear-gradient(
+      135deg,
+      var(--event-accent, var(--primary)) 0%,
+      var(--rose-gold) 100%
+    );
+    box-shadow:
+      0 2px 8px var(--event-accent-glow, var(--primary-glow)),
+      inset 0 1px 0 0 oklch(1 0 0 / 22%);
+    z-index: 0;
+  }
+
+  /* ============================================================================
+     PULL-TO-REFRESH AFFORDANCE — faint chevron at top of mobile lists.
+     Sits above content, fades in as the user pulls down.
+     ========================================================================== */
+  .ptr-affordance {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 0;
+    overflow: hidden;
+    transition: height var(--motion-base) var(--ease);
+    color: var(--text-tertiary);
+  }
+  .ptr-affordance[data-active="true"] {
+    height: 32px;
   }
 }

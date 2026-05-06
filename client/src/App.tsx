@@ -14,6 +14,7 @@ import Portal from "./pages/Portal";
 import MemoryWall from "./pages/MemoryWall";
 import Gallery from "./pages/Gallery";
 import CheckIn from "./pages/CheckIn";
+import Chats from "./pages/Chats";
 
 /**
  * Mount Stack Auth's pre-built UI at /handler/*.
@@ -40,6 +41,7 @@ function Router() {
       <Route path="/checkin/:id" component={CheckIn} />
       <Route path="/portal/:slug" component={Portal} />
       <Route path="/memory/:slug" component={MemoryWall} />
+      <Route path="/chats/:slug" component={Chats} />
       <Route path="/gallery" component={Gallery} />
       {/* Stack Auth pre-built UI — sign-in, sign-up, sign-out, OAuth callbacks */}
       <Route path="/handler/:rest*" component={StackAuthHandler} />

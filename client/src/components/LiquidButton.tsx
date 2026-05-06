@@ -51,9 +51,17 @@ export function LiquidButton({
       const y = ((e.clientY - rect.top) / rect.height) * 100;
       ref.current.style.setProperty("--ripple-x", `${x}%`);
       ref.current.style.setProperty("--ripple-y", `${y}%`);
+      // Apple HIG haptic on primary/danger only — ghost/glass stays silent.
+      if (
+        (variant === "primary" || variant === "danger") &&
+        typeof navigator !== "undefined" &&
+        "vibrate" in navigator
+      ) {
+        navigator.vibrate(10);
+      }
       onClick?.(e);
     },
-    [onClick]
+    [onClick, variant]
   );
 
   // Variant styles — bound to CSS variables so per-event accent overrides cascade.

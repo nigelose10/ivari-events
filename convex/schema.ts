@@ -274,4 +274,14 @@ export default defineSchema({
   })
     .index("by_eventId", ["eventId"])
     .index("by_eventId_visitorHash", ["eventId", "visitorHash"]),
+
+  // ───────────────────────────────────────────────────────────────────────
+  // weatherCache — cached Open-Meteo forecast slices keyed by lat/lon/date.
+  // Refreshed every ~6h by the weather action. Pure cache, safe to truncate.
+  // ───────────────────────────────────────────────────────────────────────
+  weatherCache: defineTable({
+    cacheKey: v.string(), // format: "${lat.toFixed(2)},${lon.toFixed(2)},${dateISO}"
+    forecastJson: v.string(), // serialized response slice
+    fetchedAt: v.number(),
+  }).index("by_cacheKey", ["cacheKey"]),
 });

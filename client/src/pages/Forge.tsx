@@ -195,6 +195,10 @@ export default function Forge() {
 
   const handleCreate = useCallback(() => {
     if (!title.trim()) return;
+    // Apple HIG haptic confirmation on primary action (mobile only)
+    if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+      navigator.vibrate(10);
+    }
     let dateMs: number | undefined;
     if (eventDate) {
       const dateStr = eventTime ? `${eventDate}T${eventTime}` : `${eventDate}T00:00`;

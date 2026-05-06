@@ -174,11 +174,11 @@ export default function Home() {
         <AmbientBackground />
         <div className="flex flex-col items-center gap-4">
           <motion.div
-            className="w-10 h-10 rounded-full border-2 border-[oklch(0.72_0.16_255)] border-t-transparent"
+            className="w-10 h-10 rounded-full border-2 border-[var(--primary)] border-t-transparent"
             animate={{ rotate: 360 }}
             transition={{ duration: 1.2, repeat: Infinity, ease: "linear" }}
           />
-          <span className="text-sm text-[oklch(0.5_0.02_265)] tracking-wide">Loading your events...</span>
+          <span className="text-sm text-[var(--text-tertiary)] tracking-wide">Loading your events...</span>
         </div>
       </div>
     );

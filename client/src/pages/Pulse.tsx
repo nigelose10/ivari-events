@@ -21,6 +21,8 @@ import type { Id } from "../../../convex/_generated/dataModel";
 import { GlassCard } from "@/components/GlassCard";
 import { LiquidButton } from "@/components/LiquidButton";
 import { AmbientBackground } from "@/components/AmbientBackground";
+import { WeatherWidget } from "@/components/WeatherWidget";
+import { SegmentedControl } from "@/components/SegmentedControl";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft, Copy, Check, Users, UserCheck, UserX, HelpCircle,
@@ -501,25 +503,20 @@ export default function Pulse() {
         </div>
       </header>
 
-      {/* Tab Navigation */}
+      {/* Tab Navigation — Apple iOS segmented control with sliding amber indicator */}
       <div className="relative z-10 px-6 mt-8 mb-6">
-        <div className="max-w-3xl mx-auto">
-          <GlassCard variant="subtle" className="p-1.5 inline-flex gap-1 flex-wrap">
-            {(["overview", "analytics", "guests", "notifications"] as Tab[]).map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`px-5 py-2.5 rounded-xl text-sm font-medium transition-all duration-500 capitalize flex items-center gap-2 ${
-                  activeTab === tab
-                    ? "bg-[oklch(0.75_0.15_55/15%)] text-foreground shadow-[0_0_12px_oklch(0.75_0.15_55/10%)]"
-                    : "text-[oklch(0.5_0.02_265)] hover:text-foreground hover:bg-[oklch(1_0_0/5%)]"
-                }`}
-              >
-                {tab === "analytics" && <BarChart3 className="w-3.5 h-3.5" />}
-                {tab === "guests" ? `Guests (${guestStats.total})` : tab}
-              </button>
-            ))}
-          </GlassCard>
+        <div className="max-w-3xl mx-auto flex justify-center sm:justify-start">
+          <SegmentedControl<Tab>
+            value={activeTab}
+            onChange={setActiveTab}
+            layoutId="pulse-tab-indicator"
+            items={[
+              { value: "overview", label: "Overview" },
+              { value: "analytics", label: "Analytics", icon: <BarChart3 className="w-3.5 h-3.5" /> },
+              { value: "guests", label: `Guests (${guestStats.total})` },
+              { value: "notifications", label: "Notifications" },
+            ]}
+          />
         </div>
       </div>
 
@@ -582,6 +579,39 @@ export default function Pulse() {
                     )}
                   </AnimatePresence>
                 </GlassCard>
+
+                {/* V7-W4 — host-side weather forecast (≤7 days out) */}
+                {event?.eventDate && (() => {
+                  const lat =
+                    typeof (event as any).latitude === "number"
+                      ? ((event as any).latitude as number)
+                      : (event as any).locationLat
+                      ? parseFloat((event as any).locationLat)
+                      : undefined;
+                  const lon =
+                    typeof (event as any).longitude === "number"
+                      ? ((event as any).longitude as number)
+                      : (event as any).locationLng
+                      ? parseFloat((event as any).locationLng)
+                      : undefined;
+                  if (
+                    lat === undefined ||
+                    lon === undefined ||
+                    !Number.isFinite(lat) ||
+                    !Number.isFinite(lon)
+                  )
+                    return null;
+                  return (
+                    <div>
+                      <WeatherWidget
+                        eventId={eventId}
+                        latitude={lat}
+                        longitude={lon}
+                        eventDateMs={event.eventDate as number}
+                      />
+                    </div>
+                  );
+                })()}
 
                 {/* RSVP Overview */}
                 <GlassCard variant="strong" className="p-6">
@@ -737,6 +767,18 @@ export default function Pulse() {
                       </div>
                     </GlassCard>
                   )}
+
+                  <GlassCard variant="subtle" className="p-5 cursor-pointer" onClick={() => navigate(`/chats/${event.slug}`)} hover>
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-[oklch(0.75_0.15_55/12%)] flex items-center justify-center">
+                        <MessageSquare className="w-4 h-4 text-[oklch(0.75_0.15_55)]" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-sm">Group Chats</p>
+                        <p className="text-[0.6875rem] text-[oklch(0.45_0.02_265)]">Host conversations with guests</p>
+                      </div>
+                    </div>
+                  </GlassCard>
 
                   {surveyConfig.length > 0 && (
                     <GlassCard variant="subtle" className="p-5">
