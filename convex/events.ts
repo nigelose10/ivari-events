@@ -155,6 +155,48 @@ export const get = query({
 });
 
 /**
+ * Host-only event lookup that accepts EITHER a Convex `Id<"events">` OR an
+ * event slug. Pulse and other host surfaces use this so URLs can be either
+ * `/pulse/<convex-id>` (post-duplicate) or `/pulse/<slug>` (post-create from
+ * Forge, which prefers the slug for shareability).
+ *
+ * Returns null on miss/unauth instead of throwing — easier on the React tree
+ * (no boundary needed, just a "Not found" state).
+ */
+export const getByIdOrSlug = query({
+  args: { idOrSlug: v.string() },
+  handler: async (ctx, { idOrSlug }) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) return null;
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_tokenIdentifier", (q) =>
+        q.eq("tokenIdentifier", identity.tokenIdentifier),
+      )
+      .unique();
+    if (!user) return null;
+
+    // Try as Convex Id first. normalizeId returns null if the string isn't
+    // a valid id for the events table, which lets us fall back to a slug
+    // lookup without throwing.
+    let event = null;
+    const asId = ctx.db.normalizeId("events", idOrSlug);
+    if (asId !== null) {
+      event = await ctx.db.get(asId);
+    }
+    if (!event) {
+      event = await ctx.db
+        .query("events")
+        .withIndex("by_slug", (q) => q.eq("slug", idOrSlug))
+        .first();
+    }
+    if (!event) return null;
+    if (event.hostId !== user._id) return null; // not the owner — treat as not found
+    return withResolvedImage(ctx, event);
+  },
+});
+
+/**
  * Resolves whether the currently-authed user is the host of the given event.
  * Returns `false` (not throw) for unauthenticated callers — this is consumed
  * by guest-facing surfaces (like MemoryWall) that need to conditionally show

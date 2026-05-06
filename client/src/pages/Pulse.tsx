@@ -50,7 +50,12 @@ export default function Pulse() {
   useAuth({ redirectOnUnauthenticated: true });
   const [, navigate] = useLocation();
   const params = useParams<{ id: string }>();
-  const eventId = params.id as Id<"events">;
+  // The URL param can be either a Convex `Id<"events">` (post-duplicate
+  // navigation) OR a slug (post-create from Forge, which prefers the
+  // shareable slug). The flexible `getByIdOrSlug` query resolves either,
+  // and once we have the doc we use its real `_id` for all downstream
+  // queries that demand the strict Id type.
+  const idOrSlug = params.id ?? "";
   const [copied, setCopied] = useState(false);
   const [editing, setEditing] = useState(false);
   const [showAllRsvps, setShowAllRsvps] = useState(false);
@@ -87,7 +92,16 @@ export default function Pulse() {
   const [previewOpen, setPreviewOpen] = useState(false);
 
   // ─── Convex queries ───
-  const eventDoc = useQuery(api.events.get, eventId ? { id: eventId } : "skip");
+  // Phase 1: resolve the param (id-or-slug) to the actual event doc.
+  const eventDoc = useQuery(
+    api.events.getByIdOrSlug,
+    idOrSlug ? { idOrSlug } : "skip",
+  );
+  // Once we have the resolved doc, derive the strict Convex Id for the
+  // downstream queries that require it. While eventDoc is loading or the
+  // event isn't found, eventId stays undefined and dependent queries skip.
+  const eventId = (eventDoc?._id ?? undefined) as Id<"events"> | undefined;
+
   const countsData = useQuery(api.rsvps.getCounts, eventId ? { eventId } : "skip");
   const rsvpsData = useQuery(api.rsvps.list, eventId ? { eventId } : "skip");
   const guestsData = useQuery(api.guests.list, eventId ? { eventId } : "skip");
@@ -612,12 +626,14 @@ export default function Pulse() {
                     return null;
                   return (
                     <div>
-                      <WeatherWidget
-                        eventId={eventId}
-                        latitude={lat}
-                        longitude={lon}
-                        eventDateMs={event.eventDate as number}
-                      />
+                      {eventId && (
+                        <WeatherWidget
+                          eventId={eventId}
+                          latitude={lat}
+                          longitude={lon}
+                          eventDateMs={event.eventDate as number}
+                        />
+                      )}
                     </div>
                   );
                 })()}
