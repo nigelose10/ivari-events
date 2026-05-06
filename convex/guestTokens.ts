@@ -164,3 +164,52 @@ export const mintGuestLink = action({
     return { url: `${origin}/portal/${event.slug}?gt=${token}` };
   },
 });
+
+/**
+ * Public action: decode a per-guest token (`gt=` query param) without
+ * throwing. Used by the Portal so it can resolve the `guestId` carried in
+ * the URL → call `users.claimGuestRecord` after the user signs in.
+ *
+ * Returns null on bad/expired/missing token rather than throwing — keeps
+ * the portal flow resilient (anonymous shared links must still work).
+ */
+export const decodeGuestToken = action({
+  args: { token: v.string() },
+  returns: v.union(
+    v.null(),
+    v.object({
+      eventId: v.string(),
+      slug: v.string(),
+      access: v.union(
+        v.literal("rsvp"),
+        v.literal("memory"),
+        v.literal("full"),
+      ),
+      guestId: v.optional(v.string()),
+    }),
+  ),
+  handler: async (_ctx, { token }) => {
+    if (!token) return null;
+    try {
+      const secret = getSecret();
+      const { payload } = await jose.jwtVerify(token, secret);
+      const result: {
+        eventId: string;
+        slug: string;
+        access: "rsvp" | "memory" | "full";
+        guestId?: string;
+      } = {
+        eventId: payload.eventId as string,
+        slug: payload.slug as string,
+        access: ((payload.access as string) ||
+          "full") as "rsvp" | "memory" | "full",
+      };
+      if (payload.guestId != null) {
+        result.guestId = payload.guestId as string;
+      }
+      return result;
+    } catch {
+      return null;
+    }
+  },
+});

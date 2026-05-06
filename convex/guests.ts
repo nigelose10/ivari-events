@@ -97,6 +97,13 @@ const GUEST_ROW = v.object({
   name: v.string(),
   email: v.optional(v.string()),
   phone: v.optional(v.string()),
+  // Wedding-tier seating + notes (V10). All optional for backward compat with
+  // legacy CSV imports that only had name/email/phone.
+  tableNumber: v.optional(v.string()),
+  seatNumber: v.optional(v.string()),
+  dietaryNotes: v.optional(v.string()),
+  hostNotes: v.optional(v.string()),
+  guestNotes: v.optional(v.string()),
 });
 
 /**
@@ -127,6 +134,11 @@ export const bulkImport = mutation({
         name: row.name,
         email: row.email,
         phone: row.phone,
+        tableNumber: row.tableNumber,
+        seatNumber: row.seatNumber,
+        dietaryNotes: row.dietaryNotes,
+        hostNotes: row.hostNotes,
+        guestNotes: row.guestNotes,
         portalToken: undefined,
         notificationStatus: "pending",
         checkedIn: "0",
@@ -233,6 +245,37 @@ export const remove = mutation({
 });
 
 /**
+ * V10 seating-chart assignment. Sets (or clears) tableNumber/seatNumber on a
+ * single guest. Pass `tableNumber: undefined` (or omit) to UNASSIGN — the
+ * client uses this when a guest is dragged back to the unassigned rail.
+ *
+ * IDOR-checked: re-loads the guest, then re-loads its event and asserts the
+ * caller owns it. Same pattern as `update`/`remove` above.
+ */
+export const assignTable = mutation({
+  args: {
+    guestId: v.id("guests"),
+    tableNumber: v.optional(v.string()),
+    seatNumber: v.optional(v.string()),
+  },
+  handler: async (ctx, { guestId, tableNumber, seatNumber }) => {
+    const user = await requireUser(ctx);
+    const guest = await ctx.db.get(guestId);
+    if (!guest) throw new Error("Guest not found");
+    const event = await ctx.db.get(guest.eventId);
+    if (!event || event.hostId !== user._id) {
+      throw new Error("Forbidden");
+    }
+    await ctx.db.patch(guestId, {
+      tableNumber: tableNumber || undefined,
+      seatNumber: seatNumber || undefined,
+      updatedAt: Date.now(),
+    });
+    return { success: true };
+  },
+});
+
+/**
  * Bulk patch notification status — used by the notifications send-blast flow
  * after delivery attempts. Each guestId is verified to belong to the eventId.
  */
@@ -321,4 +364,43 @@ export const uncheckIn = mutation({
 export const getGuestForOwnerCheck = internalQuery({
   args: { guestId: v.id("guests") },
   handler: async (ctx, { guestId }) => ctx.db.get(guestId),
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// Public guest lookup (V10 wedding-tier "find your name" flow)
+//
+// PUBLIC — NO AUTH. Called from Portal.tsx so guests can type their name and
+// see THEIR personalized seating + host-shared notes. We deliberately strip
+// hostNotes, email, phone, claimedByUserId, portalToken before returning so
+// nothing private leaks. Only the host sees those via guests.list().
+// ───────────────────────────────────────────────────────────────────────────
+export const findByNameInEvent = query({
+  args: { eventSlug: v.string(), nameQuery: v.string() },
+  handler: async (ctx, { eventSlug, nameQuery }) => {
+    const event = await ctx.db
+      .query("events")
+      .withIndex("by_slug", (q) => q.eq("slug", eventSlug))
+      .first();
+    if (!event) return [];
+    const trimmed = nameQuery.trim();
+    if (trimmed.length < 2) return [];
+
+    const matches = await ctx.db
+      .query("guests")
+      .withSearchIndex("search_name_for_event", (q) =>
+        q.search("name", trimmed).eq("eventId", event._id),
+      )
+      .take(8);
+
+    // Strip private fields before returning. NEVER include hostNotes,
+    // email, phone, portalToken, or notification metadata in this surface.
+    return matches.map((g) => ({
+      _id: g._id,
+      name: g.name,
+      tableNumber: g.tableNumber,
+      seatNumber: g.seatNumber,
+      dietaryNotes: g.dietaryNotes,
+      guestNotes: g.guestNotes,
+    }));
+  },
 });

@@ -72,6 +72,17 @@
 
   <body>
     <div id="root"></div>
+    <!-- Theme bootstrap — applied before React mounts to avoid flash of wrong theme. -->
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem('ivari:theme');
+          if (t === 'light' || t === 'dark') {
+            document.documentElement.setAttribute('data-theme', t);
+          }
+        } catch (e) { /* localStorage blocked — fall back to system pref */ }
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
     <!-- Umami analytics — disabled. Re-enable by adding the script with VITE_ANALYTICS_ENDPOINT/VITE_ANALYTICS_WEBSITE_ID. -->
   </body>

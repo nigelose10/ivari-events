@@ -5,6 +5,7 @@ import { StackHandler } from "@stackframe/react";
 import { lazy, Suspense } from "react";
 import { Route, Switch, useLocation } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
+import MobileBottomNav from "./components/MobileBottomNav";
 import PWAInstallPrompt from "./components/PWAInstallPrompt";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
@@ -86,6 +87,7 @@ function App() {
         <TooltipProvider>
           <Toaster />
           <Router />
+          <MobileBottomNav />
           <PWAInstallPrompt />
         </TooltipProvider>
       </ThemeProvider>

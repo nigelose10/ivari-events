@@ -23,6 +23,9 @@
 import { useState, useCallback, useMemo, useEffect } from "react";
 import { useQuery, useAction, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
+import { useAuth } from "@/_core/hooks/useAuth";
+import { getLoginUrl } from "@/const";
+import type { Id } from "../../../convex/_generated/dataModel";
 import { GlassCard } from "@/components/GlassCard";
 import { LiquidButton } from "@/components/LiquidButton";
 import { AmbientBackground } from "@/components/AmbientBackground";
@@ -102,13 +105,39 @@ export default function Portal() {
   const [, navigate] = useLocation();
 
   const searchStr = typeof window !== "undefined" ? window.location.search : "";
-  const token = useMemo(() => {
+  // V11 — three URL shapes Portal must handle:
+  //   ?token=<jwt>         shared anonymous link from Pulse "Copy Portal Link"
+  //   ?gt=<jwt>            per-guest tracked link from `mintGuestLink` (carries guestId)
+  //   ?guest=<guestId>     bare guestId from QR scans (no JWT — used post-claim)
+  // Sign-in claim flow keys off `gt` (decoded server-side) OR `guest`.
+  const { gt, guestParam, anonToken } = useMemo(() => {
     const p = new URLSearchParams(searchStr);
-    return p.get("token") || "";
+    return {
+      gt: p.get("gt") || "",
+      guestParam: p.get("guest") || "",
+      anonToken: p.get("token") || "",
+    };
   }, [searchStr]);
+  // The token we pass to RSVP submit — prefer per-guest gt, fall back to shared anon token.
+  const token = gt || anonToken;
 
   const [guestName, setGuestName] = useState("");
   const [guestEmail, setGuestEmail] = useState("");
+  // V10 wedding-tier: "find your name" lookup. Lets a guest who arrived
+  // without a per-guest QR/token (e.g. shared portal link) type their name
+  // and see THEIR personalized table/seat/host notes before RSVP. The
+  // server-side `findByNameInEvent` query strips private fields (hostNotes,
+  // email, phone) before returning.
+  type GuestMatch = {
+    _id: string;
+    name: string;
+    tableNumber?: string;
+    seatNumber?: string;
+    dietaryNotes?: string;
+    guestNotes?: string;
+  };
+  const [nameQuery, setNameQuery] = useState("");
+  const [pickedGuest, setPickedGuest] = useState<GuestMatch | null>(null);
   const [status, setStatus] = useState<RsvpStatus>("attending");
   const [plusOnes, setPlusOnes] = useState(0);
   const [message, setMessage] = useState("");
@@ -128,11 +157,91 @@ export default function Portal() {
   // Convex reactive queries — auto-update when underlying data changes.
   const eventData = useQuery(api.events.getBySlug, slug ? { slug } : "skip");
   const countsData = useQuery(api.rsvps.publicCounts, slug ? { slug } : "skip");
+  // V10 wedding-tier — public name search (server strips hostNotes etc).
+  // Only fires once the typed query is at least 2 chars.
+  const nameMatches = useQuery(
+    api.guests.findByNameInEvent,
+    slug && nameQuery.trim().length >= 2
+      ? { eventSlug: slug, nameQuery: nameQuery.trim() }
+      : "skip",
+  );
   const eventQuery = { data: eventData, isLoading: !!slug && eventData === undefined };
   const countsQuery = { data: countsData, refetch: () => {} /* no-op: Convex auto-refetches */ };
 
   // RSVP submit goes through an action (it verifies the guest JWT internally).
   const submitWithToken = useAction(api.rsvps.submitWithToken);
+  const decodeGuestToken = useAction(api.guestTokens.decodeGuestToken);
+  const claimGuestRecord = useMutation(api.users.claimGuestRecord);
+  const ensureUser = useMutation(api.users.ensureUser);
+
+  // V11 — auth + claim wiring.
+  const { isAuthenticated, loading: authLoading } = useAuth();
+
+  // Resolved guestId — either from server-decoded `gt` JWT (preferred) or
+  // direct `?guest=` param (set after a claim, when the token has been used).
+  const [resolvedGuestId, setResolvedGuestId] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    if (guestParam) {
+      setResolvedGuestId(guestParam);
+      return;
+    }
+    if (gt) {
+      decodeGuestToken({ token: gt })
+        .then((res) => {
+          if (cancelled) return;
+          setResolvedGuestId(res?.guestId ?? null);
+        })
+        .catch(() => {
+          if (!cancelled) setResolvedGuestId(null);
+        });
+    } else {
+      setResolvedGuestId(null);
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [gt, guestParam, decodeGuestToken]);
+
+  // Once signed in AND we have a guestId resolved, claim the record. This
+  // runs idempotently — claimGuestRecord no-ops if already-yours.
+  const [claimAttempted, setClaimAttempted] = useState(false);
+  useEffect(() => {
+    if (claimAttempted) return;
+    if (!isAuthenticated || authLoading) return;
+    if (!slug || !resolvedGuestId) return;
+    setClaimAttempted(true);
+    // Bootstrap the users row first (idempotent), then claim. Without
+    // ensureUser the mutation throws "User row missing".
+    (async () => {
+      try {
+        await ensureUser({});
+        await claimGuestRecord({
+          eventSlug: slug,
+          guestId: resolvedGuestId as Id<"guests">,
+        });
+      } catch (err) {
+        // Silent — claim is best-effort. RSVP flow continues regardless.
+        console.warn("[portal] claimGuestRecord failed", err);
+      }
+    })();
+  }, [isAuthenticated, authLoading, slug, resolvedGuestId, claimAttempted, ensureUser, claimGuestRecord]);
+
+  // Personalized data — only fetched when signed in. Powers the "Welcome
+  // back, {name}" greeting + table assignment line.
+  const myClaimed = useQuery(
+    api.users.myClaimedGuestForEvent,
+    isAuthenticated && slug ? { eventSlug: slug } : "skip",
+  );
+  // V11 — once we resolve the user's claimed guest record, prefill name so
+  // returning visitors don't have to retype it. Only seeds when blank to
+  // respect any in-progress edits.
+  useEffect(() => {
+    if (myClaimed?.name && !guestName) {
+      setGuestName(myClaimed.name);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myClaimed?.name]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submitMutation = {
     isPending: isSubmitting,
@@ -196,6 +305,26 @@ export default function Portal() {
   const handleSubmit = useCallback(() => {
     if (!guestName.trim()) { toast.error("Please enter your name"); return; }
     if (!token) { toast.error("Invalid invitation link"); return; }
+
+    // V11 — sign-in gate on "Attending". If the guest is on a per-guest link
+    // (gt= present) but not signed in, route to Stack Auth's sign-in page
+    // first so the event can stick to their profile. Anonymous shared
+    // links (?token= only, no resolvedGuestId) skip this — they keep working
+    // as before.
+    if (
+      status === "attending" &&
+      resolvedGuestId &&
+      !authLoading &&
+      !isAuthenticated &&
+      typeof window !== "undefined"
+    ) {
+      const returnTo =
+        window.location.pathname + window.location.search + window.location.hash;
+      const url = `${getLoginUrl()}?after_auth_return_to=${encodeURIComponent(returnTo)}`;
+      window.location.href = url;
+      return;
+    }
+
     // Apple HIG haptic confirmation on RSVP submit (mobile only)
     if (typeof navigator !== "undefined" && "vibrate" in navigator) {
       navigator.vibrate(10);
@@ -209,7 +338,7 @@ export default function Portal() {
       message: message.trim() || undefined,
       surveyResponses: Object.keys(surveyAnswers).length > 0 ? surveyAnswers : undefined,
     });
-  }, [token, guestName, guestEmail, status, plusOnes, message, surveyAnswers, submitMutation]);
+  }, [token, guestName, guestEmail, status, plusOnes, message, surveyAnswers, submitMutation, resolvedGuestId, authLoading, isAuthenticated]);
 
   // ─── Loading ───
   if (eventQuery.isLoading) {
@@ -530,6 +659,116 @@ export default function Portal() {
       </motion.section>
 
       {/* ============================================================
+          V10 WEDDING-TIER — FIND YOUR NAME
+          Lets a guest who arrived via the shared portal link (no per-guest
+          token, no claim) type their name and reveal THEIR personalized
+          table / seat / host-shared notes. Hidden once a match is picked
+          OR the visitor is already a claimed/signed-in guest.
+          ============================================================ */}
+      {!myClaimed && !isEventClosed && (
+        <motion.section
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ ...t, delay: 0.85 }}
+          className="relative z-10 px-6 sm:px-10 lg:px-16 py-12 sm:py-16"
+        >
+          <div className="max-w-[640px] mx-auto space-y-5">
+            {!pickedGuest && (
+              <>
+                <div className="text-center space-y-2">
+                  <p className="eyebrow eyebrow-accent">Find your details</p>
+                  <h3 className="font-display text-2xl sm:text-3xl font-semibold tracking-tight leading-[1.1]">
+                    Type your name to see your table
+                  </h3>
+                </div>
+                <input
+                  type="text"
+                  value={nameQuery}
+                  onChange={(e) => setNameQuery(e.target.value)}
+                  placeholder="Your name..."
+                  className="glass-input w-full"
+                  aria-label="Find your name"
+                />
+                {nameQuery.trim().length >= 2 && nameMatches && nameMatches.length > 0 && (
+                  <GlassCard className="divide-y divide-[var(--border-hairline,oklch(1_0_0/8%))]">
+                    {nameMatches.map((m) => (
+                      <button
+                        key={m._id}
+                        onClick={() => {
+                          setPickedGuest(m as GuestMatch);
+                          // Prefill the RSVP name field too — saves a step.
+                          if (!guestName) setGuestName(m.name);
+                        }}
+                        className="w-full text-left px-5 py-3 hover:bg-[oklch(1_0_0/4%)] transition-colors"
+                      >
+                        <p className="font-medium text-[var(--text-primary)]">{m.name}</p>
+                        {m.tableNumber && (
+                          <p className="text-xs text-[var(--text-tertiary)] mt-0.5">
+                            Table {m.tableNumber}
+                            {m.seatNumber ? ` · Seat ${m.seatNumber}` : ""}
+                          </p>
+                        )}
+                      </button>
+                    ))}
+                  </GlassCard>
+                )}
+                {nameQuery.trim().length >= 2 && nameMatches && nameMatches.length === 0 && (
+                  <p className="text-xs text-[var(--text-tertiary)] text-center">
+                    No matches yet — keep typing or skip ahead to RSVP below.
+                  </p>
+                )}
+              </>
+            )}
+
+            {pickedGuest && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, ease: EASE }}
+              >
+                <GlassCard variant="elevated" className="p-6 sm:p-8 space-y-3">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="space-y-1">
+                      <p className="eyebrow">Welcome</p>
+                      <p className="font-display text-2xl font-semibold tracking-tight">
+                        {pickedGuest.name}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => { setPickedGuest(null); setNameQuery(""); }}
+                      className="text-xs text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
+                      aria-label="Not me"
+                    >
+                      Not me
+                    </button>
+                  </div>
+                  {pickedGuest.tableNumber && (
+                    <p className="text-sm text-[var(--text-secondary)]">
+                      Your table:{" "}
+                      <span className="text-[var(--event-accent,var(--primary))] font-medium">
+                        {pickedGuest.tableNumber}
+                        {pickedGuest.seatNumber ? ` · Seat ${pickedGuest.seatNumber}` : ""}
+                      </span>
+                    </p>
+                  )}
+                  {pickedGuest.dietaryNotes && (
+                    <p className="text-xs text-[var(--text-tertiary)]">
+                      Dietary: {pickedGuest.dietaryNotes}
+                    </p>
+                  )}
+                  {pickedGuest.guestNotes && (
+                    <p className="text-sm text-[var(--text-secondary)] italic border-l-2 border-[var(--event-accent,var(--primary))] pl-3 mt-3">
+                      From the host: {pickedGuest.guestNotes}
+                    </p>
+                  )}
+                </GlassCard>
+              </motion.div>
+            )}
+          </div>
+        </motion.section>
+      )}
+
+      {/* ============================================================
           RSVP CLOSED NOTICE
           ============================================================ */}
       {isRsvpClosed && (
@@ -570,6 +809,37 @@ export default function Portal() {
           className="relative z-10 px-6 sm:px-10 lg:px-16 py-24 sm:py-32"
         >
           <div className="max-w-[640px] mx-auto space-y-10">
+            {/* V11 — personalized greeting for signed-in returning guests.
+                Sits above the RSVP eyebrow so the page reads "Welcome back,
+                Sarah. Your table: 7" before asking the question. */}
+            {myClaimed && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, ease: EASE }}
+                className="text-center"
+              >
+                <GlassCard className="px-6 py-5 inline-block">
+                  <p className="font-display text-lg sm:text-xl font-semibold tracking-tight">
+                    Welcome back, {myClaimed.name}
+                  </p>
+                  {myClaimed.tableNumber && (
+                    <p className="text-sm text-[var(--text-secondary)] mt-1">
+                      Your table:{" "}
+                      <span className="text-[var(--event-accent,var(--primary))] font-medium">
+                        {myClaimed.tableNumber}
+                        {myClaimed.seatNumber ? ` · Seat ${myClaimed.seatNumber}` : ""}
+                      </span>
+                    </p>
+                  )}
+                  {myClaimed.guestNotes && (
+                    <p className="text-xs text-[var(--text-tertiary)] mt-2 max-w-sm">
+                      {myClaimed.guestNotes}
+                    </p>
+                  )}
+                </GlassCard>
+              </motion.div>
+            )}
             {/* Section eyebrow */}
             <div className="text-center space-y-4">
               <p className="eyebrow eyebrow-accent">{i18n.rsvpTitle}</p>

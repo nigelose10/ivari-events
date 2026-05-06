@@ -24,6 +24,8 @@ import { AmbientBackground } from "@/components/AmbientBackground";
 import { WeatherWidget } from "@/components/WeatherWidget";
 import { SegmentedControl } from "@/components/SegmentedControl";
 import { InvitationPreview } from "@/components/InvitationPreview";
+import SeatingChart from "@/components/SeatingChart";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft, Copy, Check, Users, UserCheck, UserX, HelpCircle,
@@ -44,7 +46,7 @@ import {
 
 const t = { duration: 0.6, ease: [0.22, 1, 0.36, 1] as const };
 
-type Tab = "overview" | "analytics" | "guests" | "notifications";
+type Tab = "overview" | "analytics" | "guests" | "seating" | "notifications";
 
 export default function Pulse() {
   useAuth({ redirectOnUnauthenticated: true });
@@ -121,6 +123,7 @@ export default function Pulse() {
   const duplicateEvent = useMutation(api.events.duplicate);
   const generateQR = useAction(api.qrcode.generateAndStore);
   const mintGuestLink = useAction(api.guestTokens.mintGuestLink);
+  const signGuestToken = useAction(api.guestTokens.signGuestToken);
 
   // Wrappers preserving the original .mutate({...}) ergonomics
   const updateMutation = {
@@ -146,13 +149,51 @@ export default function Pulse() {
   const importCsvMutation = {
     isPending: false,
     mutate: async ({ csvText }: { csvText: string }) => {
+      // V10 wedding-tier: header-aware CSV parser. Supports columns:
+      // name, email, phone, table, seat, diet, notes, host note (any order).
+      // Backward compat: if no recognized header is present, fall back to
+      // the legacy `name, email, phone` ordering for first-line data.
       const lines = csvText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
       if (lines.length === 0) return;
-      const header = lines[0].toLowerCase();
-      const hasHeader = /name|email|phone/.test(header);
-      const guests = (hasHeader ? lines.slice(1) : lines).map(line => {
-        const [name, email, phone] = line.split(",").map(s => s?.trim());
-        return { name: name || "Guest", email: email || undefined, phone: phone || undefined };
+
+      const headers = lines[0].toLowerCase().split(",").map(h => h.trim());
+      const colIndex = (names: string[]) => {
+        const found = names.map(n => headers.indexOf(n)).find(i => i >= 0);
+        return found ?? -1;
+      };
+
+      const nameIdx  = colIndex(["name", "full name", "guest", "guest name"]);
+      const emailIdx = colIndex(["email", "e-mail"]);
+      const phoneIdx = colIndex(["phone", "mobile", "cell"]);
+      const tableIdx = colIndex(["table", "table number", "table #"]);
+      const seatIdx  = colIndex(["seat", "seat number"]);
+      const dietIdx  = colIndex(["diet", "dietary", "allergies"]);
+      const noteIdx  = colIndex(["note", "notes", "guest note"]);
+      const hostIdx  = colIndex(["host note", "private note", "internal"]);
+
+      const hasHeaders = nameIdx >= 0;
+      const rows = hasHeaders ? lines.slice(1) : lines;
+
+      const guests = rows.map(line => {
+        const cells = line.split(",").map(c => c.trim().replace(/^"|"$/g, ""));
+        if (!hasHeaders) {
+          // Legacy 3-column fallback (no header detected).
+          return {
+            name: cells[0] || "Guest",
+            email: cells[1] || undefined,
+            phone: cells[2] || undefined,
+          };
+        }
+        return {
+          name: (cells[nameIdx] ?? "").trim() || "Guest",
+          email: emailIdx >= 0 ? cells[emailIdx] || undefined : undefined,
+          phone: phoneIdx >= 0 ? cells[phoneIdx] || undefined : undefined,
+          tableNumber: tableIdx >= 0 ? cells[tableIdx] || undefined : undefined,
+          seatNumber: seatIdx >= 0 ? cells[seatIdx] || undefined : undefined,
+          dietaryNotes: dietIdx >= 0 ? cells[dietIdx] || undefined : undefined,
+          guestNotes: noteIdx >= 0 ? cells[noteIdx] || undefined : undefined,
+          hostNotes: hostIdx >= 0 ? cells[hostIdx] || undefined : undefined,
+        };
       });
       try {
         const res = await bulkImportGuests({ eventId, guests });
@@ -200,11 +241,27 @@ export default function Pulse() {
   };
   const qrCodeMut = {
     isPending: false,
-    mutate: () => {
-      const portalUrl = event ? `${window.location.origin}/portal/${event.slug}` : "";
-      generateQR({ eventId, portalUrl })
-        .then((data: any) => setQrData({ dataUrl: data.dataUrl ?? data.url, downloadUrl: data.downloadUrl ?? data.url, portalUrl }))
-        .catch((err: Error) => toast.error(err.message));
+    mutate: async () => {
+      if (!event) return;
+      try {
+        // Mint a shareable portal token (full access, 90d) so the QR code
+        // links to a portal URL the guest can actually RSVP from.
+        const portalToken = await signGuestToken({
+          payload: { eventId: event._id, slug: event.slug, access: "full" },
+        });
+        const data = await generateQR({
+          eventId: event._id,
+          origin: window.location.origin,
+          portalToken,
+        });
+        setQrData({
+          dataUrl: data.dataUrl,
+          downloadUrl: data.downloadUrl,
+          portalUrl: data.portalUrl,
+        });
+      } catch (err: any) {
+        toast.error(err?.message || "Failed to generate QR");
+      }
     },
   };
   const oracleMut = { isPending: false, data: undefined as any, mutate: () => toast.info("Social Oracle (AI guest suggestions) coming soon.") };
@@ -332,6 +389,25 @@ export default function Pulse() {
     importCsvMutation.mutate({ eventId, csvText, origin: window.location.origin });
   }, [csvText, eventId, importCsvMutation]);
 
+  // V10 wedding-tier: download a sample CSV with all supported columns
+  // pre-filled. Mirrors the parser's column aliases so hosts can copy-edit.
+  const handleDownloadSampleCsv = useCallback(() => {
+    const sample = [
+      "name,email,phone,table,seat,diet,notes,host note",
+      "Alex Morgan,alex@example.com,555-0101,7,3,Vegan,Looking forward!,VIP - knows the host",
+      "Sam Lee,sam@example.com,555-0102,7,4,,,",
+    ].join("\n");
+    const blob = new Blob([sample], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "ivari-guests-sample.csv";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, []);
+
   const handleAddGuest = useCallback(() => {
     if (!newGuestName.trim()) { toast.error("Name is required"); return; }
     addGuestMutation.mutate({ eventId, name: newGuestName.trim(), email: newGuestEmail.trim() || undefined, phone: newGuestPhone.trim() || undefined, origin: window.location.origin });
@@ -344,7 +420,7 @@ export default function Pulse() {
 
   const handleGenerateQR = useCallback(() => {
     if (!event) return;
-    qrCodeMut.mutate({ eventId: event.id, origin: window.location.origin });
+    qrCodeMut.mutate();
   }, [event, qrCodeMut]);
 
   const handleOracle = useCallback(() => {
@@ -432,10 +508,13 @@ export default function Pulse() {
       {/* Header */}
       <header className={`relative z-10 px-6 ${event.imageUrl ? "-mt-24" : "pt-12"}`}>
         <div className="max-w-3xl mx-auto">
-          <button onClick={() => navigate("/")} className="flex items-center gap-2 text-[oklch(0.5_0.02_265)] hover:text-foreground transition-colors duration-300 mb-5">
-            <ArrowLeft className="w-5 h-5" />
-            <span className="text-sm font-medium">Events</span>
-          </button>
+          <div className="flex items-center justify-between mb-5">
+            <button onClick={() => navigate("/")} className="flex items-center gap-2 text-[var(--text-tertiary)] hover:text-foreground transition-colors duration-300">
+              <ArrowLeft className="w-5 h-5" />
+              <span className="text-sm font-medium">Events</span>
+            </button>
+            <ThemeToggle />
+          </div>
 
           <AnimatePresence mode="wait">
             {editing ? (
@@ -537,6 +616,7 @@ export default function Pulse() {
               { value: "overview", label: "Overview" },
               { value: "analytics", label: "Analytics", icon: <BarChart3 className="w-3.5 h-3.5" /> },
               { value: "guests", label: `Guests (${guestStats.total})` },
+              { value: "seating", label: "Seating" },
               { value: "notifications", label: "Notifications" },
             ]}
           />
@@ -1081,10 +1161,13 @@ export default function Pulse() {
                     <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={t}>
                       <GlassCard variant="strong" className="p-6 space-y-4">
                         <h4 className="font-semibold text-sm">Import Guest List</h4>
-                        <p className="text-xs text-[oklch(0.5_0.02_265)]">Paste CSV with columns: Name, Email, Phone. Headers are auto-detected.</p>
-                        <textarea value={csvText} onChange={(e) => setCsvText(e.target.value)} placeholder={"Name, Email, Phone\nJohn Doe, john@example.com, +1234567890"} rows={6} className="glass-input font-mono text-xs" />
-                        <div className="flex gap-3">
+                        <p className="text-xs text-[oklch(0.5_0.02_265)]">
+                          Supports columns: <span className="font-mono">name, email, phone, table, seat, diet, notes, host note</span>. First row should be headers.
+                        </p>
+                        <textarea value={csvText} onChange={(e) => setCsvText(e.target.value)} placeholder={"name,email,phone,table,seat,diet,notes,host note\nAlex Morgan,alex@example.com,555-0101,7,3,Vegan,Looking forward!,VIP"} rows={6} className="glass-input font-mono text-xs" />
+                        <div className="flex flex-wrap gap-3">
                           <LiquidButton onClick={handleImportCSV} loading={importCsvMutation.isPending} size="sm" className="gap-2"><Upload className="w-4 h-4" /> Import</LiquidButton>
+                          <LiquidButton variant="ghost" size="sm" onClick={handleDownloadSampleCsv} className="gap-2"><Download className="w-4 h-4" /> Download sample CSV</LiquidButton>
                           <LiquidButton variant="ghost" size="sm" onClick={() => { setShowImport(false); setCsvText(""); }}>Cancel</LiquidButton>
                         </div>
                       </GlassCard>
@@ -1135,6 +1218,17 @@ export default function Pulse() {
                     </div>
                   )}
                 </GlassCard>
+              </motion.div>
+            )}
+
+            {/* ─── SEATING TAB ─── */}
+            {activeTab === "seating" && eventId && event && (
+              <motion.div key="seating" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={t}>
+                <SeatingChart
+                  eventId={eventId}
+                  guests={guestList}
+                  tables={(event as any).tablesConfig ?? []}
+                />
               </motion.div>
             )}
 

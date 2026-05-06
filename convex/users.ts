@@ -104,6 +104,107 @@ export const me = query({
   },
 });
 
+/**
+ * Claim a guest record for the currently signed-in Stack Auth user.
+ *
+ * Called by the Portal after a guest signs in following an "Attending" tap on
+ * a per-guest invitation link. The guest row is keyed by `eventSlug` + the
+ * `guestId` carried in the JWT (`gt=` query param). Once claimed, the event
+ * surfaces in the user's "I'm Attending" list on Home, and on subsequent
+ * portal visits we greet them by name with their table assignment.
+ */
+export const claimGuestRecord = mutation({
+  args: { eventSlug: v.string(), guestId: v.id("guests") },
+  returns: v.union(
+    v.literal("claimed"),
+    v.literal("already-yours"),
+    v.literal("not-found"),
+    v.literal("already-claimed-by-other"),
+  ),
+  handler: async (ctx, { eventSlug, guestId }) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthorized");
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_tokenIdentifier", (q) =>
+        q.eq("tokenIdentifier", identity.tokenIdentifier),
+      )
+      .unique();
+    if (!user) throw new Error("User row missing — auth bootstrap not run");
+
+    const event = await ctx.db
+      .query("events")
+      .withIndex("by_slug", (q) => q.eq("slug", eventSlug))
+      .first();
+    if (!event) return "not-found";
+
+    const guest = await ctx.db.get(guestId);
+    if (!guest || guest.eventId !== event._id) return "not-found";
+
+    if (guest.claimedByUserId === user._id) return "already-yours";
+    // If another signed-in user already claimed this exact guest record,
+    // refuse — guest rows are 1:1 with a person and shouldn't be transferred.
+    if (guest.claimedByUserId && guest.claimedByUserId !== user._id) {
+      return "already-claimed-by-other";
+    }
+
+    await ctx.db.patch(guestId, {
+      claimedByUserId: user._id,
+      claimedAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+    return "claimed";
+  },
+});
+
+/**
+ * Resolve the current user's claimed guest record for a given event slug.
+ * Powers the personalized greeting in Portal — name + table number + dietary
+ * notes appear on subsequent visits/scans without re-typing.
+ *
+ * Returns null when not signed in, no claim exists, or the event isn't found.
+ */
+export const myClaimedGuestForEvent = query({
+  args: { eventSlug: v.string() },
+  handler: async (ctx, { eventSlug }) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) return null;
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_tokenIdentifier", (q) =>
+        q.eq("tokenIdentifier", identity.tokenIdentifier),
+      )
+      .unique();
+    if (!user) return null;
+
+    const event = await ctx.db
+      .query("events")
+      .withIndex("by_slug", (q) => q.eq("slug", eventSlug))
+      .first();
+    if (!event) return null;
+
+    // Pull all guest rows this user has claimed and pick the one for this event.
+    const claimed = await ctx.db
+      .query("guests")
+      .withIndex("by_claimedByUserId", (q) =>
+        q.eq("claimedByUserId", user._id),
+      )
+      .collect();
+    const match = claimed.find((g) => g.eventId === event._id);
+    if (!match) return null;
+
+    return {
+      _id: match._id,
+      name: match.name,
+      tableNumber: match.tableNumber,
+      seatNumber: match.seatNumber,
+      dietaryNotes: match.dietaryNotes,
+      guestNotes: match.guestNotes,
+    };
+  },
+});
+
 /** Internal helper — used by other modules' actions to look up a user by JWT subject. */
 export const getCurrentUser = internalQuery({
   args: { tokenIdentifier: v.string() },

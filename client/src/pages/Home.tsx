@@ -18,6 +18,7 @@ import { useState, useMemo } from "react";
 import { GlassCard } from "@/components/GlassCard";
 import { LiquidButton } from "@/components/LiquidButton";
 import { AmbientBackground } from "@/components/AmbientBackground";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { motion } from "framer-motion";
 import {
   Plus,
@@ -83,6 +84,17 @@ export default function Home() {
     isLoading: isAuthenticated && eventsRaw === undefined,
   };
 
+  // V11 — "I'm Attending" — events the signed-in user has claimed via a
+  // per-guest invitation link. Distinct from the host events list above.
+  const claimedEventsRaw = useQuery(
+    api.events.myClaimedEvents,
+    isAuthenticated ? {} : "skip",
+  );
+  const claimedEvents = useMemo(
+    () => (claimedEventsRaw ?? []).map((e: any) => ({ ...e, id: e._id })),
+    [claimedEventsRaw],
+  );
+
   const duplicateEvent = useMutation(api.events.duplicate);
   const [isDuplicating, setIsDuplicating] = useState(false);
   const duplicateMut = {
@@ -107,6 +119,9 @@ export default function Home() {
     return (
       <div className="min-h-screen relative flex flex-col">
         <AmbientBackground />
+        <div className="absolute top-6 right-6 z-20">
+          <ThemeToggle />
+        </div>
         <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-6">
           <motion.div
             initial={{ opacity: 0, y: 40 }}
@@ -121,12 +136,12 @@ export default function Home() {
               className="mb-12"
             >
               <h1 className="text-7xl sm:text-8xl font-extrabold tracking-[-0.04em] leading-none">
-                <span className="bg-gradient-to-br from-[oklch(0.78_0.12_255)] via-[oklch(0.68_0.18_290)] to-[oklch(0.6_0.16_320)] bg-clip-text text-transparent">
+                <span className="bg-gradient-to-br from-[var(--primary)] via-[var(--rose-gold)] to-[var(--primary)] bg-clip-text text-transparent">
                   IVARI
                 </span>
               </h1>
               <motion.div
-                className="h-px w-16 mx-auto mt-6 bg-gradient-to-r from-transparent via-[oklch(1_0_0/20%)] to-transparent"
+                className="h-px w-16 mx-auto mt-6 bg-gradient-to-r from-transparent via-[var(--border-strong)] to-transparent"
                 initial={{ scaleX: 0 }}
                 animate={{ scaleX: 1 }}
                 transition={{ duration: 0.8, delay: 0.5 }}
@@ -134,7 +149,7 @@ export default function Home() {
             </motion.div>
 
             <motion.p
-              className="text-xl sm:text-2xl font-light text-[oklch(0.7_0.02_265)] leading-relaxed tracking-[-0.01em] mb-12"
+              className="text-xl sm:text-2xl font-light text-[var(--text-secondary)] leading-relaxed tracking-[-0.01em] mb-12"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.4, duration: 0.8 }}
@@ -157,7 +172,7 @@ export default function Home() {
                 Enter Events
                 <ArrowRight className="w-5 h-5" />
               </LiquidButton>
-              <p className="text-xs text-[oklch(0.45_0.02_265)] mt-4 tracking-wide">
+              <p className="text-xs text-[var(--text-faint)] mt-4 tracking-wide">
                 CRAFT EXTRAORDINARY GATHERINGS
               </p>
             </motion.div>
@@ -205,20 +220,25 @@ export default function Home() {
               <h1 className="text-4xl sm:text-5xl font-bold tracking-[-0.03em] leading-tight">
                 Events
               </h1>
-              <p className="text-[oklch(0.55_0.02_265)] mt-2 text-[0.9375rem]">
+              <p className="text-[var(--text-secondary)] mt-2 text-[0.9375rem]">
                 {user?.name ? `Welcome back, ${user.name}` : "Your gatherings"}
               </p>
             </motion.div>
-            <motion.button
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.3 }}
-              onClick={() => logout()}
-              className="p-2.5 rounded-xl hover:bg-[oklch(1_0_0/6%)] transition-colors duration-300 text-[oklch(0.5_0.02_265)] hover:text-foreground"
-              title="Sign out"
+              className="flex items-center gap-2"
             >
-              <LogOut className="w-5 h-5" />
-            </motion.button>
+              <ThemeToggle />
+              <button
+                onClick={() => logout()}
+                className="p-2.5 rounded-xl hover:bg-[var(--accent)] transition-colors duration-300 text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
+                title="Sign out"
+              >
+                <LogOut className="w-5 h-5" />
+              </button>
+            </motion.div>
           </div>
 
           {/* Create CTA + Gallery Link */}
@@ -300,9 +320,121 @@ export default function Home() {
               )}
             </>
           )}
+
+          {/* V11 — "I'm Attending" — events claimed by sign-in from a
+              per-guest invitation link. Only renders when there's at least
+              one — empty state stays hidden so it doesn't clutter the page
+              for hosts who never RSVP'd to anything. */}
+          {claimedEvents.length > 0 && (
+            <ClaimedEventsSection
+              events={claimedEvents}
+              navigate={navigate}
+              startIndex={eventList.length}
+            />
+          )}
         </div>
       </div>
     </div>
+  );
+}
+
+function ClaimedEventsSection({
+  events,
+  navigate,
+  startIndex,
+}: {
+  events: any[];
+  navigate: (p: string) => void;
+  startIndex: number;
+}) {
+  return (
+    <div className="space-y-3 pt-8">
+      <motion.p
+        className="text-xs font-semibold tracking-[0.15em] uppercase text-[oklch(0.5_0.02_265)] px-1"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.15 }}
+      >
+        I&apos;m Attending
+      </motion.p>
+      {events.map((event, i) => (
+        <ClaimedEventCard
+          key={event.id}
+          event={event}
+          index={startIndex + i}
+          navigate={navigate}
+        />
+      ))}
+    </div>
+  );
+}
+
+function ClaimedEventCard({
+  event,
+  index,
+  navigate,
+}: {
+  event: any;
+  index: number;
+  navigate: (p: string) => void;
+}) {
+  return (
+    <GlassCard
+      className="overflow-hidden group"
+      onClick={() => navigate(`/portal/${event.slug}?guest=${event.asGuestId}`)}
+      hover
+      delay={0.15 + index * 0.06}
+    >
+      <div className="flex">
+        {event.imageUrl ? (
+          <div className="w-28 sm:w-36 flex-shrink-0 relative overflow-hidden">
+            <img
+              src={event.imageUrl}
+              alt=""
+              className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
+            />
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-transparent to-[oklch(0.06_0.025_275/60%)]" />
+          </div>
+        ) : (
+          <div className="w-28 sm:w-36 flex-shrink-0 bg-gradient-to-br from-[oklch(0.15_0.03_280)] to-[oklch(0.1_0.02_260)] flex items-center justify-center">
+            <Sparkles className="w-8 h-8 text-[oklch(0.35_0.02_265)]" />
+          </div>
+        )}
+        <div className="flex-1 p-5 sm:p-6 flex flex-col justify-between min-h-[120px]">
+          <div>
+            <h3 className="text-base sm:text-lg font-semibold tracking-[-0.01em] group-hover:text-[oklch(0.78_0.12_255)] transition-colors duration-500 line-clamp-1">
+              {event.title}
+            </h3>
+            {event.tableNumber && (
+              <p className="text-xs text-[oklch(0.65_0.10_70)] mt-1 font-medium tracking-wide uppercase">
+                Your table: {event.tableNumber}
+                {event.seatNumber ? ` · Seat ${event.seatNumber}` : ""}
+              </p>
+            )}
+          </div>
+          <div className="flex items-center gap-4 text-xs text-[oklch(0.5_0.02_265)]">
+            {event.eventDate && (
+              <span className="flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 opacity-60" />
+                <span>{formatEventDate(event.eventDate)}</span>
+              </span>
+            )}
+            {event.locationName && (
+              <span className="flex items-center gap-1.5 hidden sm:flex">
+                <MapPin className="w-3.5 h-3.5 opacity-60" />
+                <span className="truncate max-w-[120px]">{event.locationName}</span>
+              </span>
+            )}
+            {event.guestName && (
+              <span className="flex items-center gap-1.5">
+                <Users className="w-3.5 h-3.5 opacity-60" />
+                <span>RSVP&apos;d as {event.guestName}</span>
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    </GlassCard>
   );
 }
 

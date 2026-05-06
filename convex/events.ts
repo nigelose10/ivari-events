@@ -229,6 +229,57 @@ export const isHostBySlug = query({
   },
 });
 
+/**
+ * "I'm Attending" — events the current user has claimed via a per-guest
+ * invitation link. Returns each event with the user's guest metadata
+ * (table number, name as registered) attached so Home can render a
+ * personalized card.
+ *
+ * Returns [] when unauthenticated — no throws so Home can render even when
+ * the user is signed-out (the section just collapses).
+ */
+export const myClaimedEvents = query({
+  args: {},
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) return [];
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_tokenIdentifier", (q) =>
+        q.eq("tokenIdentifier", identity.tokenIdentifier),
+      )
+      .unique();
+    if (!user) return [];
+
+    const claimedGuests = await ctx.db
+      .query("guests")
+      .withIndex("by_claimedByUserId", (q) =>
+        q.eq("claimedByUserId", user._id),
+      )
+      .collect();
+
+    const enriched = await Promise.all(
+      claimedGuests.map(async (g) => {
+        const event = await ctx.db.get(g.eventId);
+        if (!event) return null;
+        // Skip events the user actually hosts — those already show in the
+        // host "Events" list and don't belong in "I'm Attending".
+        if (event.hostId === user._id) return null;
+        const resolved = await withResolvedImage(ctx, event);
+        return {
+          ...resolved,
+          asGuestId: g._id,
+          tableNumber: g.tableNumber,
+          seatNumber: g.seatNumber,
+          guestName: g.name,
+          claimedAt: g.claimedAt,
+        };
+      }),
+    );
+    return enriched.filter((e): e is NonNullable<typeof e> => e !== null);
+  },
+});
+
 /** Public — used by the guest portal page. Returns only guest-safe fields. */
 export const getBySlug = query({
   args: { slug: v.string() },
@@ -406,6 +457,37 @@ export const update = mutation({
       });
     }
 
+    return { success: true };
+  },
+});
+
+/**
+ * V10 seating-chart — replace the host's table layout for an event. Only the
+ * event owner can call this. Stable string ids on each table are referenced
+ * by guests.tableNumber (drag-drop assignment in SeatingChart.tsx).
+ */
+export const updateTablesConfig = mutation({
+  args: {
+    id: v.id("events"),
+    tables: v.array(
+      v.object({
+        id: v.string(),
+        label: v.string(),
+        capacity: v.optional(v.number()),
+        shape: v.optional(
+          v.union(
+            v.literal("round"),
+            v.literal("rect"),
+            v.literal("oval"),
+          ),
+        ),
+      }),
+    ),
+  },
+  handler: async (ctx, { id, tables }) => {
+    const user = await requireUser(ctx);
+    await requireOwnedEvent(ctx, id, user._id);
+    await ctx.db.patch(id, { tablesConfig: tables, updatedAt: Date.now() });
     return { success: true };
   },
 });

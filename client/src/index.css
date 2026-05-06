@@ -76,8 +76,13 @@
    Pure black foundation, warm off-white text, single warm-amber accent.
    No purple. No violet. No cool-blue grays. All hue arithmetic anchored at 75°.
    ========================================================================== */
+:root {
+  color-scheme: light dark;
+}
+
 :root,
-.dark {
+.dark,
+[data-theme="dark"] {
   /* ── Backgrounds (warm-cooled black) ── */
   --background:        oklch(0.04 0.005 75);   /* page bg — pure black with whisper of warm */
   --background-elevated: oklch(0.06 0.008 75); /* one step up */
@@ -225,6 +230,180 @@
   --glass-vibrancy-soft: blur(80px) saturate(220%) brightness(1.02);
 }
 
+/* ============================================================================
+   LIGHT THEME — Warm ivory cream + deeper amber. NEVER cool gray, NEVER blue.
+   All hues stay anchored at 60–75° (warm). Same token names; different values.
+   Activated via [data-theme="light"] on <html>, or by system preference when
+   no explicit choice is stored.
+   ========================================================================== */
+[data-theme="light"] {
+  /* Backgrounds — warm ivory progressing into cream */
+  --background:        oklch(0.97 0.01 75);
+  --background-elevated: oklch(0.95 0.012 70);
+  --bg-base:           oklch(0.97 0.01 75);
+  --bg-surface:        oklch(0.94 0.013 70);
+  --bg-elevated:       oklch(0.92 0.015 70);
+
+  /* Foreground — warm near-black ink (NOT blue-black) */
+  --foreground:        oklch(0.18 0.02 60);
+  --warm:              oklch(0.18 0.02 60);
+  --warm-muted:        oklch(0.40 0.02 60);
+  --text-primary:      oklch(0.18 0.02 60);
+  --text-secondary:    oklch(0.35 0.02 60);
+  --text-tertiary:     oklch(0.50 0.02 60);
+  --text-muted:        oklch(0.58 0.02 60);
+  --text-faint:        oklch(0.65 0.02 60);
+
+  /* Cards on ivory — pure cream surfaces */
+  --card:              oklch(0.94 0.013 70);
+  --card-foreground:   oklch(0.18 0.02 60);
+  --popover:           oklch(0.96 0.012 70);
+  --popover-foreground: oklch(0.18 0.02 60);
+
+  /* Primary — deeper, more saturated amber for AA contrast on cream */
+  --primary:                oklch(0.62 0.16 55);
+  --primary-foreground:     oklch(0.98 0.005 75);
+  --primary-soft:           oklch(0.62 0.16 55 / 14%);
+  --primary-glow:           oklch(0.62 0.16 55 / 28%);
+
+  /* Secondary / rose-gold — deepened for contrast */
+  --secondary:              oklch(0.90 0.018 70);
+  --secondary-foreground:   oklch(0.22 0.02 60);
+  --rose-gold:              oklch(0.55 0.13 30);
+  --rose-gold-soft:         oklch(0.55 0.13 30 / 16%);
+
+  /* Muted */
+  --muted:             oklch(0.90 0.014 70);
+  --muted-foreground:  oklch(0.45 0.02 60);
+
+  /* Accent (warm hover wash) */
+  --accent:            oklch(0.88 0.018 70);
+  --accent-foreground: oklch(0.18 0.02 60);
+
+  /* Semantic — slightly deepened for AA on light */
+  --success:           oklch(0.55 0.14 155);
+  --success-soft:      oklch(0.55 0.14 155 / 14%);
+  --warning:           oklch(0.65 0.14 75);
+  --warning-soft:      oklch(0.65 0.14 75 / 14%);
+  --destructive:       oklch(0.55 0.20 28);
+  --destructive-soft:  oklch(0.55 0.20 28 / 14%);
+  --destructive-foreground: oklch(0.98 0 0);
+  --info:              oklch(0.55 0.10 200);
+  --info-soft:         oklch(0.55 0.10 200 / 14%);
+
+  /* Borders — black-tinted hairlines (NOT white) */
+  --border:            oklch(0 0 0 / 8%);
+  --border-subtle:     oklch(0 0 0 / 5%);
+  --border-strong:     oklch(0 0 0 / 14%);
+  --input:             oklch(0 0 0 / 8%);
+  --ring:              oklch(0.62 0.16 55);
+
+  /* Charts — same hue families, lower lightness for visibility on cream */
+  --chart-1: oklch(0.62 0.16 55);   /* amber */
+  --chart-2: oklch(0.55 0.13 30);   /* rose */
+  --chart-3: oklch(0.55 0.14 155);  /* sage */
+  --chart-4: oklch(0.55 0.10 200);  /* steel */
+  --chart-5: oklch(0.55 0.20 28);   /* persimmon */
+
+  /* Sidebar — cream */
+  --sidebar:                       oklch(0.95 0.012 70);
+  --sidebar-foreground:            oklch(0.20 0.02 60);
+  --sidebar-primary:               oklch(0.62 0.16 55);
+  --sidebar-primary-foreground:    oklch(0.98 0.005 75);
+  --sidebar-accent:                oklch(0.90 0.018 70);
+  --sidebar-accent-foreground:     oklch(0.18 0.02 60);
+  --sidebar-border:                oklch(0 0 0 / 6%);
+  --sidebar-ring:                  oklch(0.62 0.16 55);
+
+  /* Glass — frosted cream tint, more solid than dark glass */
+  --glass:             oklch(1 0 0 / 55%);
+  --glass-foreground:  oklch(0.18 0.02 60);
+  --glass-border:      oklch(0 0 0 / 8%);
+  --glass-highlight:   oklch(1 0 0 / 80%);
+  --glass-blur:        blur(80px) saturate(180%);
+
+  /* Event accent stays amber (deeper variant) */
+  --event-accent:      oklch(0.62 0.16 55);
+  --event-accent-glow: oklch(0.62 0.16 55 / 22%);
+  --event-accent-soft: oklch(0.62 0.16 55 / 12%);
+
+  /* Liquid glass — softer brightness for cream surfaces */
+  --glass-vibrancy: blur(120px) saturate(220%) brightness(1.02);
+  --glass-vibrancy-soft: blur(80px) saturate(180%) brightness(1.0);
+}
+
+/* Auto-respect system preference when user hasn't picked explicitly */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    --background:        oklch(0.97 0.01 75);
+    --background-elevated: oklch(0.95 0.012 70);
+    --bg-base:           oklch(0.97 0.01 75);
+    --bg-surface:        oklch(0.94 0.013 70);
+    --bg-elevated:       oklch(0.92 0.015 70);
+    --foreground:        oklch(0.18 0.02 60);
+    --warm:              oklch(0.18 0.02 60);
+    --warm-muted:        oklch(0.40 0.02 60);
+    --text-primary:      oklch(0.18 0.02 60);
+    --text-secondary:    oklch(0.35 0.02 60);
+    --text-tertiary:     oklch(0.50 0.02 60);
+    --text-muted:        oklch(0.58 0.02 60);
+    --text-faint:        oklch(0.65 0.02 60);
+    --card:              oklch(0.94 0.013 70);
+    --card-foreground:   oklch(0.18 0.02 60);
+    --popover:           oklch(0.96 0.012 70);
+    --popover-foreground: oklch(0.18 0.02 60);
+    --primary:                oklch(0.62 0.16 55);
+    --primary-foreground:     oklch(0.98 0.005 75);
+    --primary-soft:           oklch(0.62 0.16 55 / 14%);
+    --primary-glow:           oklch(0.62 0.16 55 / 28%);
+    --secondary:              oklch(0.90 0.018 70);
+    --secondary-foreground:   oklch(0.22 0.02 60);
+    --rose-gold:              oklch(0.55 0.13 30);
+    --rose-gold-soft:         oklch(0.55 0.13 30 / 16%);
+    --muted:             oklch(0.90 0.014 70);
+    --muted-foreground:  oklch(0.45 0.02 60);
+    --accent:            oklch(0.88 0.018 70);
+    --accent-foreground: oklch(0.18 0.02 60);
+    --success:           oklch(0.55 0.14 155);
+    --success-soft:      oklch(0.55 0.14 155 / 14%);
+    --warning:           oklch(0.65 0.14 75);
+    --warning-soft:      oklch(0.65 0.14 75 / 14%);
+    --destructive:       oklch(0.55 0.20 28);
+    --destructive-soft:  oklch(0.55 0.20 28 / 14%);
+    --destructive-foreground: oklch(0.98 0 0);
+    --info:              oklch(0.55 0.10 200);
+    --info-soft:         oklch(0.55 0.10 200 / 14%);
+    --border:            oklch(0 0 0 / 8%);
+    --border-subtle:     oklch(0 0 0 / 5%);
+    --border-strong:     oklch(0 0 0 / 14%);
+    --input:             oklch(0 0 0 / 8%);
+    --ring:              oklch(0.62 0.16 55);
+    --chart-1: oklch(0.62 0.16 55);
+    --chart-2: oklch(0.55 0.13 30);
+    --chart-3: oklch(0.55 0.14 155);
+    --chart-4: oklch(0.55 0.10 200);
+    --chart-5: oklch(0.55 0.20 28);
+    --sidebar:                       oklch(0.95 0.012 70);
+    --sidebar-foreground:            oklch(0.20 0.02 60);
+    --sidebar-primary:               oklch(0.62 0.16 55);
+    --sidebar-primary-foreground:    oklch(0.98 0.005 75);
+    --sidebar-accent:                oklch(0.90 0.018 70);
+    --sidebar-accent-foreground:     oklch(0.18 0.02 60);
+    --sidebar-border:                oklch(0 0 0 / 6%);
+    --sidebar-ring:                  oklch(0.62 0.16 55);
+    --glass:             oklch(1 0 0 / 55%);
+    --glass-foreground:  oklch(0.18 0.02 60);
+    --glass-border:      oklch(0 0 0 / 8%);
+    --glass-highlight:   oklch(1 0 0 / 80%);
+    --glass-blur:        blur(80px) saturate(180%);
+    --event-accent:      oklch(0.62 0.16 55);
+    --event-accent-glow: oklch(0.62 0.16 55 / 22%);
+    --event-accent-soft: oklch(0.62 0.16 55 / 12%);
+    --glass-vibrancy: blur(120px) saturate(220%) brightness(1.02);
+    --glass-vibrancy-soft: blur(80px) saturate(180%) brightness(1.0);
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -232,6 +411,8 @@
 
   html {
     -webkit-text-size-adjust: 100%;
+    transition: background-color 400ms cubic-bezier(0.22, 1, 0.36, 1),
+                color 400ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   body {
@@ -243,6 +424,8 @@
     -moz-osx-font-smoothing: grayscale;
     line-height: 1.5;
     letter-spacing: -0.005em;
+    transition: background-color 400ms cubic-bezier(0.22, 1, 0.36, 1),
+                color 400ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   /* Display type — Cabinet Grotesk with tight spacing */
@@ -1300,5 +1483,15 @@
   }
   .ptr-affordance[data-active="true"] {
     height: 32px;
+  }
+}
+
+/* ============================================================================
+   MOBILE BOTTOM NAV — page padding so content doesn't hide behind floating bar.
+   The MobileBottomNav component sets [data-has-bottom-nav] on <body> on mount.
+   ========================================================================== */
+@media (max-width: 768px) {
+  body[data-has-bottom-nav="true"] {
+    padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
   }
 }

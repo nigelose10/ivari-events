@@ -87,6 +87,29 @@ export default defineSchema({
     themeColorSecondary: v.optional(v.string()),
     /** Portal language code (e.g. en, es, fr, de, it, pt, ja, zh, ko, ar) */
     language: v.optional(v.string()),
+    /**
+     * V10 seating chart — host-defined table layout for the event. Each
+     * entry has a stable string id (referenced by guests.tableNumber) plus
+     * a human label, optional capacity, and optional shape for the canvas.
+     * Optional so legacy events that pre-date the seating feature still
+     * validate on read.
+     */
+    tablesConfig: v.optional(
+      v.array(
+        v.object({
+          id: v.string(),
+          label: v.string(),
+          capacity: v.optional(v.number()),
+          shape: v.optional(
+            v.union(
+              v.literal("round"),
+              v.literal("rect"),
+              v.literal("oval"),
+            ),
+          ),
+        }),
+      ),
+    ),
     updatedAt: v.number(),
   })
     .index("by_slug", ["slug"])
@@ -176,8 +199,26 @@ export default defineSchema({
     checkedIn: v.union(v.literal("0"), v.literal("1")),
     /** Timestamp when guest checked in */
     checkedInAt: v.optional(v.number()),
+    // Wedding-tier: per-guest seating + notes (V10).
+    tableNumber: v.optional(v.string()), // "Table 7", "Bridal", "VIP Lounge"
+    seatNumber: v.optional(v.string()), // "Seat 4" or just "12"
+    dietaryNotes: v.optional(v.string()), // "Vegan, no nuts"
+    hostNotes: v.optional(v.string()), // private — never returned to guests
+    guestNotes: v.optional(v.string()), // shown to guest in personalized portal
+    /** Stack Auth user who claimed this guest record on first sign-in via a
+     *  per-guest invitation link. Once set, the event sticks to the user's
+     *  profile and shows up in their "I'm Attending" list. */
+    claimedByUserId: v.optional(v.id("users")),
+    /** Timestamp of the claim (ms). */
+    claimedAt: v.optional(v.number()),
     updatedAt: v.number(),
-  }).index("by_eventId", ["eventId"]),
+  })
+    .index("by_eventId", ["eventId"])
+    .index("by_claimedByUserId", ["claimedByUserId"])
+    .searchIndex("search_name_for_event", {
+      searchField: "name",
+      filterFields: ["eventId"],
+    }),
 
   // ───────────────────────────────────────────────────────────────────────
   // notifications — log of all notifications sent for an event.
