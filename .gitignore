@@ -109,8 +109,7 @@ temp/
 # Webdev artifacts (checkpoint zips, migrations, etc.)
 .webdev/
 
-# Convex (codegen + local dev state)
-convex/_generated/
+# Convex (local dev state only — _generated/ committed for Vercel CI)
 .convex/
 
 # Vercel
