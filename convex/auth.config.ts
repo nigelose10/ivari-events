@@ -25,16 +25,18 @@ const STACK_PROJECT_ID = process.env.STACK_PROJECT_ID ?? "";
 const config = {
   providers: [
     {
-      // Stack Auth's JWTs are standard RS256 JWTs — Convex's customJwt path
-      // verifies them via the JWKS URL.
+      // Stack Auth's JWTs are ES256 (P-256 ECDSA) — confirmed by inspecting
+      // the JWKS response (`alg: "ES256"`). Convex's customJwt path verifies
+      // them via the JWKS URL below.
       type: "customJwt" as const,
       applicationID: STACK_PROJECT_ID,
-      // The issuer Stack puts in the `iss` claim of issued JWTs.
-      issuer: "https://api.stack-auth.com",
+      // The issuer Stack puts in the `iss` claim is the tenant URL — including
+      // the project ID path segment. Verified by inspecting a live JWT.
+      issuer: "https://api.stack-auth.com/api/v1/projects/" + STACK_PROJECT_ID,
       jwks: "https://api.stack-auth.com/api/v1/projects/" +
         STACK_PROJECT_ID +
         "/.well-known/jwks.json",
-      algorithm: "RS256" as const,
+      algorithm: "ES256" as const,
     },
   ],
 } satisfies AuthConfig;
