@@ -10,6 +10,7 @@ import { createRoot } from "react-dom/client";
 import superjson from "superjson";
 import App from "./App";
 import EnvGuardBanner from "./components/EnvGuard";
+import UserBootstrap from "./components/UserBootstrap";
 import "./index.css";
 
 const queryClient = new QueryClient();
@@ -66,6 +67,7 @@ createRoot(document.getElementById("root")!).render(
     <StackProvider app={stackClientApp}>
       <StackTheme>
         <ConvexProviderWithAuth client={convex} useAuth={useAuthForConvex}>
+          <UserBootstrap />
           <trpc.Provider client={trpcClient} queryClient={queryClient}>
             <QueryClientProvider client={queryClient}>
               <App />

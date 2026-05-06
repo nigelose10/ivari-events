@@ -22,6 +22,7 @@ import type * as photos from "../photos.js";
 import type * as qrcode from "../qrcode.js";
 import type * as rsvps from "../rsvps.js";
 import type * as templates from "../templates.js";
+import type * as users from "../users.js";
 import type * as weather from "../weather.js";
 
 import type {
@@ -45,6 +46,7 @@ declare const fullApi: ApiFromModules<{
   qrcode: typeof qrcode;
   rsvps: typeof rsvps;
   templates: typeof templates;
+  users: typeof users;
   weather: typeof weather;
 }>;
 
