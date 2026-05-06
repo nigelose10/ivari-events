@@ -8,7 +8,9 @@
  * - [ ] Card hover: lift + glow, never scale (per tokens)
  */
 import { useAuth } from "@/_core/hooks/useAuth";
-import { trpc } from "@/lib/trpc";
+import { useQuery } from "convex/react";
+import { api } from "../../../convex/_generated/api";
+import { useMemo } from "react";
 import { GlassCard } from "@/components/GlassCard";
 import { AmbientBackground } from "@/components/AmbientBackground";
 import { motion } from "framer-motion";
@@ -23,8 +25,11 @@ const t = { duration: 0.6, ease: [0.22, 1, 0.36, 1] as const };
 export default function Gallery() {
   useAuth({ redirectOnUnauthenticated: true });
   const [, navigate] = useLocation();
-  const eventsQuery = trpc.events.list.useQuery();
-  const events = eventsQuery.data || [];
+  const eventsRaw = useQuery(api.events.list);
+  const events = useMemo(
+    () => (eventsRaw ?? []).map((e: any) => ({ ...e, id: e._id })),
+    [eventsRaw],
+  );
 
   const pastEvents = events.filter(e => e.status === "past");
   const activeEvents = events.filter(e => e.status === "active");

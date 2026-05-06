@@ -14,7 +14,7 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { GlassCard } from "@/components/GlassCard";
 import { LiquidButton } from "@/components/LiquidButton";
 import { AmbientBackground } from "@/components/AmbientBackground";
@@ -73,23 +73,27 @@ export default function Home() {
   const [, navigate] = useLocation();
 
   // Convex reactive query — auto-subscribes; pass "skip" when unauthenticated.
-  const events = useQuery(api.events.list, isAuthenticated ? {} : "skip");
+  const eventsRaw = useQuery(api.events.list, isAuthenticated ? {} : "skip");
+  const events = useMemo(
+    () => (eventsRaw ?? []).map((e: any) => ({ ...e, id: e._id })),
+    [eventsRaw],
+  );
   const eventsQuery = {
     data: events,
-    isLoading: isAuthenticated && events === undefined,
+    isLoading: isAuthenticated && eventsRaw === undefined,
   };
 
   const duplicateEvent = useMutation(api.events.duplicate);
   const [isDuplicating, setIsDuplicating] = useState(false);
   const duplicateMut = {
     isPending: isDuplicating,
-    mutate: async (input: { eventId: string; cloneGuests?: boolean }) => {
+    mutate: async (input: { id: string; includeGuests?: boolean }) => {
       setIsDuplicating(true);
       try {
-        const result = await duplicateEvent(input as any);
-        const id = (result as any)?.slug ?? (result as any)?.id ?? result;
+        const result = await duplicateEvent({ id: input.id as any, includeGuests: input.includeGuests ?? false });
+        const newId = (result as any)?._id ?? (result as any)?.id ?? result;
         toast.success("Event duplicated as draft");
-        navigate(`/pulse/${id}`);
+        navigate(`/pulse/${newId}`);
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Duplicate failed");
       } finally {
@@ -312,7 +316,7 @@ function EventSection({
   label: string;
   events: any[];
   navigate: (p: string) => void;
-  onDuplicate: (id: number) => void;
+  onDuplicate: (id: string) => void;
   startIndex: number;
 }) {
   return (
@@ -347,7 +351,7 @@ function EventCard({
   event: any;
   index: number;
   navigate: (p: string) => void;
-  onDuplicate: (id: number) => void;
+  onDuplicate: (id: string) => void;
 }) {
   return (
     <GlassCard

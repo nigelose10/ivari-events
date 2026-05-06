@@ -15,7 +15,9 @@
  */
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { trpc } from "@/lib/trpc";
+import { useQuery, useMutation, useAction } from "convex/react";
+import { api } from "../../../convex/_generated/api";
+import type { Id } from "../../../convex/_generated/dataModel";
 import { GlassCard } from "@/components/GlassCard";
 import { LiquidButton } from "@/components/LiquidButton";
 import { AmbientBackground } from "@/components/AmbientBackground";
@@ -45,11 +47,11 @@ export default function Pulse() {
   useAuth({ redirectOnUnauthenticated: true });
   const [, navigate] = useLocation();
   const params = useParams<{ id: string }>();
-  const eventId = Number(params.id);
+  const eventId = params.id as Id<"events">;
   const [copied, setCopied] = useState(false);
   const [editing, setEditing] = useState(false);
   const [showAllRsvps, setShowAllRsvps] = useState(false);
-  const [expandedRsvp, setExpandedRsvp] = useState<number | null>(null);
+  const [expandedRsvp, setExpandedRsvp] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("overview");
 
   // Edit form state
@@ -70,7 +72,7 @@ export default function Pulse() {
 
   // Notification state
   const [customMessage, setCustomMessage] = useState("");
-  const [copiedGuestId, setCopiedGuestId] = useState<number | null>(null);
+  const [copiedGuestId, setCopiedGuestId] = useState<string | null>(null);
 
   // QR Code state
   const [qrData, setQrData] = useState<{ dataUrl: string; downloadUrl: string; portalUrl: string } | null>(null);
@@ -78,107 +80,141 @@ export default function Pulse() {
   // Social Oracle state
   const [showOracle, setShowOracle] = useState(false);
 
-  // Queries
-  const eventQuery = trpc.events.get.useQuery({ id: eventId }, { enabled: !!eventId });
-  const rsvpCountsQuery = trpc.rsvps.counts.useQuery({ eventId }, { enabled: !!eventId });
-  const rsvpsQuery = trpc.rsvps.list.useQuery({ eventId }, { enabled: !!eventId });
-  const guestsQuery = trpc.guests.list.useQuery({ eventId }, { enabled: !!eventId });
-  const notificationsQuery = trpc.notifications.list.useQuery({ eventId }, { enabled: !!eventId });
-  const analyticsQuery = trpc.analytics.getStats.useQuery({ eventId }, { enabled: !!eventId && activeTab === "analytics" });
+  // ─── Convex queries ───
+  const eventDoc = useQuery(api.events.get, eventId ? { id: eventId } : "skip");
+  const countsData = useQuery(api.rsvps.getCounts, eventId ? { eventId } : "skip");
+  const rsvpsData = useQuery(api.rsvps.list, eventId ? { eventId } : "skip");
+  const guestsData = useQuery(api.guests.list, eventId ? { eventId } : "skip");
+  const notificationsData = useQuery(api.notifications.list, eventId ? { eventId } : "skip");
+  const analyticsData = useQuery(
+    api.analytics.getStats,
+    eventId && activeTab === "analytics" ? { eventId } : "skip",
+  );
 
-  const utils = trpc.useUtils();
+  // ─── Convex mutations / actions ───
+  const updateEvent = useMutation(api.events.update);
+  const removeEvent = useMutation(api.events.remove);
+  const bulkImportGuests = useMutation(api.guests.bulkImport);
+  const addGuestFn = useMutation(api.guests.add);
+  const removeGuestFn = useMutation(api.guests.remove);
+  const transitionStatus = useMutation(api.events.transitionStatus);
+  const duplicateEvent = useMutation(api.events.duplicate);
+  const generateQR = useAction(api.qrcode.generateAndStore);
 
-  // Mutations
-  const guestLinkMutation = trpc.events.getGuestLink.useMutation();
-  const updateMutation = trpc.events.update.useMutation({
-    onSuccess: () => { eventQuery.refetch(); setEditing(false); toast.success("Event updated"); },
-    onError: (err) => toast.error(err.message),
-  });
-  const regenMutation = trpc.nanoBanana.generate.useMutation({
-    onSuccess: (data) => {
-      if (event) updateMutation.mutate({ id: event.id, imageUrl: data.imageUrl, imagePrompt: data.prompt });
-      toast.success("New image generated!");
+  // Wrappers preserving the original .mutate({...}) ergonomics
+  const updateMutation = {
+    isPending: false,
+    mutate: (args: any) => {
+      const { id, ...rest } = args;
+      updateEvent({ id: (id as Id<"events">) ?? eventId, ...rest })
+        .then(() => { setEditing(false); toast.success("Event updated"); })
+        .catch((err: Error) => toast.error(err.message));
     },
-    onError: (err) => toast.error(err.message),
-  });
-  const deleteMutation = trpc.events.delete.useMutation({
-    onSuccess: () => { toast.success("Event deleted"); navigate("/"); },
-    onError: (err) => toast.error(err.message),
-  });
-  const importCsvMutation = trpc.guests.importCSV.useMutation({
-    onSuccess: (data) => {
-      toast.success(`${data.imported} guests imported`);
-      setCsvText(""); setShowImport(false);
-      utils.guests.list.invalidate({ eventId });
+  };
+  const deleteMutation = {
+    mutate: () => {
+      removeEvent({ id: eventId })
+        .then(() => { toast.success("Event deleted"); navigate("/"); })
+        .catch((err: Error) => toast.error(err.message));
     },
-    onError: (err) => toast.error(err.message),
-  });
-  const addGuestMutation = trpc.guests.add.useMutation({
-    onSuccess: () => {
-      toast.success("Guest added");
-      setNewGuestName(""); setNewGuestEmail(""); setNewGuestPhone("");
-      setShowAddGuest(false);
-      utils.guests.list.invalidate({ eventId });
+  };
+  const regenMutation = {
+    isPending: false,
+    mutate: () => toast.info("Cover regeneration removed — upload your own image instead."),
+  };
+  const importCsvMutation = {
+    isPending: false,
+    mutate: async ({ csvText }: { csvText: string }) => {
+      const lines = csvText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      if (lines.length === 0) return;
+      const header = lines[0].toLowerCase();
+      const hasHeader = /name|email|phone/.test(header);
+      const guests = (hasHeader ? lines.slice(1) : lines).map(line => {
+        const [name, email, phone] = line.split(",").map(s => s?.trim());
+        return { name: name || "Guest", email: email || undefined, phone: phone || undefined };
+      });
+      try {
+        const res = await bulkImportGuests({ eventId, guests });
+        toast.success(`${res.imported} guests imported${res.skipped ? ` (${res.skipped} skipped)` : ""}`);
+        setCsvText(""); setShowImport(false);
+      } catch (err: any) {
+        toast.error(err?.message ?? "Import failed");
+      }
     },
-    onError: (err) => toast.error(err.message),
-  });
-  const removeGuestMutation = trpc.guests.remove.useMutation({
-    onSuccess: () => { toast.success("Guest removed"); utils.guests.list.invalidate({ eventId }); },
-    onError: (err) => toast.error(err.message),
-  });
-  const sendBlastMutation = trpc.notifications.sendBlast.useMutation({
-    onSuccess: (data) => {
-      toast.success(`Sent to ${data.sent} of ${data.total} guests`);
-      utils.guests.list.invalidate({ eventId });
-      utils.notifications.list.invalidate({ eventId });
-      setCustomMessage("");
+  };
+  const addGuestMutation = {
+    isPending: false,
+    mutate: (args: { name: string; email?: string; phone?: string }) => {
+      addGuestFn({ eventId, ...args })
+        .then(() => {
+          toast.success("Guest added");
+          setNewGuestName(""); setNewGuestEmail(""); setNewGuestPhone("");
+          setShowAddGuest(false);
+        })
+        .catch((err: Error) => toast.error(err.message));
     },
-    onError: (err) => toast.error(err.message),
-  });
-  const resendFailedMutation = trpc.notifications.resendFailed.useMutation({
-    onSuccess: (data) => {
-      toast.success(`${data.reset} guests reset for retry`);
-      utils.guests.list.invalidate({ eventId });
+  };
+  const removeGuestMutation = {
+    mutate: ({ guestId }: { guestId: Id<"guests"> }) => {
+      removeGuestFn({ guestId })
+        .then(() => toast.success("Guest removed"))
+        .catch((err: Error) => toast.error(err.message));
     },
-    onError: (err) => toast.error(err.message),
-  });
-  const changeStatusMut = trpc.events.changeStatus.useMutation({
-    onSuccess: (data) => {
-      toast.success(`Status changed to ${data.newStatus}`);
-      eventQuery.refetch();
-      utils.guests.list.invalidate({ eventId });
-      utils.notifications.list.invalidate({ eventId });
+  };
+  const sendBlastMutation = { isPending: false, mutate: () => toast.info("SMS blasts coming soon — share the portal link directly for now.") };
+  const resendFailedMutation = { isPending: false, mutate: () => toast.info("Resend pipeline coming soon.") };
+  const changeStatusMut = {
+    mutate: ({ newStatus }: { newStatus: "draft" | "active" | "past" | "cancelled" }) => {
+      transitionStatus({ id: eventId, newStatus })
+        .then(() => toast.success(`Status changed to ${newStatus}`))
+        .catch((err: Error) => toast.error(err.message));
     },
-    onError: (err) => toast.error(err.message),
-  });
-  const duplicateMut = trpc.events.duplicate.useMutation({
-    onSuccess: (data) => {
-      toast.success("Event duplicated as draft");
-      navigate(`/pulse/${data.id}`);
+  };
+  const duplicateMut = {
+    mutate: () => {
+      duplicateEvent({ id: eventId, includeGuests: false })
+        .then((newId: Id<"events"> | string) => { toast.success("Event duplicated as draft"); navigate(`/pulse/${newId}`); })
+        .catch((err: Error) => toast.error(err.message));
     },
-    onError: (err) => toast.error(err.message),
-  });
-  const qrCodeMut = trpc.qrcode.generate.useMutation({
-    onSuccess: (data) => setQrData(data),
-    onError: (err) => toast.error(err.message),
-  });
-  const oracleMut = trpc.guests.suggest.useMutation({
-    onError: (err) => toast.error(err.message),
-  });
-  const generatePreviewMut = trpc.invitationPreview.generate.useMutation({
-    onSuccess: (data) => {
-      window.open(data.url, "_blank");
-      toast.success("Invitation preview generated! Opening in new tab.");
+  };
+  const qrCodeMut = {
+    isPending: false,
+    mutate: () => {
+      const portalUrl = event ? `${window.location.origin}/portal/${event.slug}` : "";
+      generateQR({ eventId, portalUrl })
+        .then((data: any) => setQrData({ dataUrl: data.dataUrl ?? data.url, downloadUrl: data.downloadUrl ?? data.url, portalUrl }))
+        .catch((err: Error) => toast.error(err.message));
     },
-    onError: (err) => toast.error("Preview generation failed: " + err.message),
-  });
+  };
+  const oracleMut = { isPending: false, data: undefined as any, mutate: () => toast.info("Social Oracle (AI guest suggestions) coming soon.") };
+  const generatePreviewMut = { isPending: false, mutate: () => toast.info("Animated invitation preview coming soon.") };
+  const guestLinkMutation = {
+    isPending: false,
+    mutateAsync: async () => {
+      if (!event) throw new Error("Event not loaded");
+      return { url: `${window.location.origin}/portal/${event.slug}` };
+    },
+  };
 
-  const event = eventQuery.data;
-  const counts = rsvpCountsQuery.data;
-  const rsvpList = rsvpsQuery.data || [];
-  const guestList = guestsQuery.data || [];
-  const notificationList = notificationsQuery.data || [];
-  const analytics = analyticsQuery.data;
+  // Convex docs use _id; alias to id for downstream renderers that expect numeric/string id
+  const event = useMemo(() => {
+    if (!eventDoc) return undefined;
+    return { ...eventDoc, id: (eventDoc as any)._id } as any;
+  }, [eventDoc]);
+  const counts = countsData;
+  const rsvpList = useMemo(
+    () => (rsvpsData ?? []).map((r: any) => ({ ...r, id: r._id })),
+    [rsvpsData],
+  );
+  const guestList = useMemo(
+    () => (guestsData ?? []).map((g: any) => ({ ...g, id: g._id })),
+    [guestsData],
+  );
+  const notificationList = useMemo(
+    () => (notificationsData ?? []).map((n: any) => ({ ...n, id: n._id })),
+    [notificationsData],
+  );
+  const analytics = analyticsData;
 
   const guestStats = useMemo(() => {
     const pending = guestList.filter(g => g.notificationStatus === "pending").length;
@@ -219,7 +255,7 @@ export default function Pulse() {
   const handleCopyLink = useCallback(async () => {
     if (!event) return;
     try {
-      const result = await guestLinkMutation.mutateAsync({ id: event.id, origin: window.location.origin });
+      const result = await guestLinkMutation.mutateAsync();
       await navigator.clipboard.writeText(result.url);
       setCopied(true);
       toast.success("Guest portal link copied!");
@@ -229,18 +265,15 @@ export default function Pulse() {
     }
   }, [event, guestLinkMutation]);
 
-  const handleCopyGuestLink = useCallback(async (guestId: number) => {
+  const handleCopyGuestLink = useCallback(async (guestId: string) => {
     if (!event) return;
     try {
-      const result = await fetch(`/api/trpc/guests.getLink?input=${encodeURIComponent(JSON.stringify({ guestId, eventId: event.id, origin: window.location.origin }))}`);
-      const json = await result.json();
-      const url = json?.result?.data?.url;
-      if (url) {
-        await navigator.clipboard.writeText(url);
-        setCopiedGuestId(guestId);
-        toast.success("Guest link copied!");
-        setTimeout(() => setCopiedGuestId(null), 2000);
-      }
+      // Per-guest tracked links require a Convex action — fall back to the shared portal link
+      const url = `${window.location.origin}/portal/${event.slug}`;
+      await navigator.clipboard.writeText(url);
+      setCopiedGuestId(guestId);
+      toast.success("Portal link copied (per-guest tracking coming soon)");
+      setTimeout(() => setCopiedGuestId(null), 2000);
     } catch {
       toast.error("Failed to copy link");
     }
@@ -306,7 +339,7 @@ export default function Pulse() {
   }, [event?.surveyConfig]);
 
   // ─── Loading ───
-  if (eventQuery.isLoading) {
+  if (eventDoc === undefined) {
     return (
       <div className="min-h-screen relative flex items-center justify-center">
         <AmbientBackground />
@@ -732,7 +765,7 @@ export default function Pulse() {
                         <p className="text-[0.6875rem] text-[oklch(0.45_0.02_265)]">This cannot be undone</p>
                       </div>
                     </div>
-                    <LiquidButton variant="danger" size="sm" onClick={() => { if (confirm("Are you sure you want to delete this event?")) deleteMutation.mutate({ id: event.id }); }} loading={deleteMutation.isPending}>
+                    <LiquidButton variant="danger" size="sm" onClick={() => { if (confirm("Are you sure you want to delete this event?")) deleteMutation.mutate(); }} loading={false}>
                       Delete
                     </LiquidButton>
                   </div>
