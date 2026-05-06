@@ -789,6 +789,18 @@ export default function Pulse() {
                     </div>
                   </GlassCard>
 
+                  <GlassCard variant="subtle" className="p-5 cursor-pointer" onClick={() => navigate(`/live/${event.slug}`)} hover>
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-[oklch(0.78_0.16_60/14%)] flex items-center justify-center">
+                        <Zap className="w-4 h-4 text-[oklch(0.78_0.16_60)]" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-sm">Live Event Mode</p>
+                        <p className="text-[0.6875rem] text-[oklch(0.45_0.02_265)]">Real-time party companion</p>
+                      </div>
+                    </div>
+                  </GlassCard>
+
                   {surveyConfig.length > 0 && (
                     <GlassCard variant="subtle" className="p-5">
                       <div className="flex items-center gap-3">

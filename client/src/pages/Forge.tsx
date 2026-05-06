@@ -102,6 +102,10 @@ export default function Forge() {
   const [themeColor, setThemeColor] = useState("#D4A853");
   const [language, setLanguage] = useState("en");
 
+  // V7 Invitation preview overlay — host can dry-run the guest experience
+  // straight from the Launch step before committing to publish.
+  const [previewOpen, setPreviewOpen] = useState(false);
+
   const mapRef = useRef<google.maps.Map | null>(null);
   const markerRef = useRef<google.maps.marker.AdvancedMarkerElement | null>(null);
   const autocompleteInputRef = useRef<HTMLInputElement | null>(null);
@@ -798,7 +802,19 @@ export default function Forge() {
                   </div>
                 </GlassCard>
 
-                <div className="flex justify-center pt-2">
+                <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                  <motion.button
+                    type="button"
+                    onClick={() => setPreviewOpen(true)}
+                    disabled={!title.trim()}
+                    className="px-7 py-4 rounded-full font-semibold text-sm tracking-[0.02em] inline-flex items-center gap-2 border border-[oklch(1_0_0/12%)] bg-[oklch(1_0_0/4%)] text-foreground backdrop-blur-md transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed"
+                    whileHover={!title.trim() ? undefined : { scale: 1.02, backgroundColor: "oklch(1 0 0 / 8%)" }}
+                    whileTap={!title.trim() ? undefined : { scale: 0.97 }}
+                    title={title.trim() ? "Preview the invitation" : "Add a title first to preview"}
+                  >
+                    <Eye className="w-4 h-4" />
+                    Preview
+                  </motion.button>
                   <motion.button
                     onClick={handleCreate}
                     disabled={createMutation.isPending}
@@ -859,6 +875,24 @@ export default function Forge() {
           </GlassCard>
         </div>
       </div>
+
+      {/* V7 Invitation preview — built from in-memory wizard state */}
+      <InvitationPreview
+        event={{
+          title: title || "Untitled Event",
+          description: description || undefined,
+          eventDate: (() => {
+            if (!eventDate) return undefined;
+            const ms = new Date(`${eventDate}${eventTime ? `T${eventTime}` : "T00:00"}`).getTime();
+            return Number.isNaN(ms) ? undefined : ms;
+          })(),
+          locationName: locationName || undefined,
+          themeColor,
+          imageUrl: imageUrl || undefined,
+        }}
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+      />
     </div>
   );
 }
