@@ -35,7 +35,7 @@ import {
   Upload, UserPlus, Send, RotateCcw, FileText, Mail, Phone,
   ExternalLink, AlertCircle, CheckCircle2, Clock,
   BarChart3, Eye, TrendingUp, QrCode, Download, Wand2,
-  Camera, Zap, BadgeCheck, Heart,
+  Camera, Zap, BadgeCheck, Heart, Shield,
 } from "lucide-react";
 import { useLocation, useParams } from "wouter";
 import { toast } from "sonner";
@@ -206,6 +206,7 @@ export default function Pulse() {
   const addFromFriendsFn = useMutation(api.guests.addFromFriends);
   const removeGuestFn = useMutation(api.guests.remove);
   const updateGuestFn = useMutation(api.guests.update);
+  const promoteGuestToCoHost = useMutation(api.events.promoteGuestToCoHost);
   const friendsList = useQuery(api.friends.list, {}) ?? [];
   const transitionStatus = useMutation(api.events.transitionStatus);
   const duplicateEvent = useMutation(api.events.duplicate);
@@ -1438,6 +1439,27 @@ export default function Pulse() {
                           </div>
                           <div className="flex items-center gap-2">
                             {statusIcon(guest.notificationStatus)}
+                            {guest.hasIvariAccount && (
+                              <button
+                                onClick={async () => {
+                                  if (!confirm(`Promote ${guest.name} to admin? They'll get full Pulse access — edit event, manage guests, moderate photos.`)) return;
+                                  try {
+                                    const res = await promoteGuestToCoHost({
+                                      eventId,
+                                      guestId: guest.id as Id<"guests">,
+                                    });
+                                    if (res.ok) toast.success(`${guest.name} is now an admin`);
+                                    else toast.error(res.reason);
+                                  } catch (err: any) {
+                                    toast.error(err?.message ?? "Failed to promote");
+                                  }
+                                }}
+                                className="p-1.5 rounded-lg hover:bg-[oklch(0.7_0.15_220/14%)] text-[oklch(0.7_0.15_220)] transition-colors opacity-0 group-hover:opacity-100"
+                                title="Make admin (co-host with full Pulse access)"
+                              >
+                                <Shield className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                             <button
                               onClick={() => {
                                 const next = window.prompt(

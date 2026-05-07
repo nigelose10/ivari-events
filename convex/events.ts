@@ -700,6 +700,55 @@ export const addCoHostByEmail = mutation({
   },
 });
 
+/**
+ * Promote a guest row directly to co-host. Lets the host promote inline
+ * from the Guests tab without re-typing the person's email — the guest
+ * must have a `claimedByUserId` (i.e. they signed in and claimed the seat),
+ * since co-host status is account-based, not anonymous-claim-based.
+ *
+ * Returns:
+ *   { ok: true, userId } — promoted (or already a co-host; idempotent)
+ *   { ok: false, reason } — guest hasn't signed in yet, or other failure
+ */
+export const promoteGuestToCoHost = mutation({
+  args: { eventId: v.id("events"), guestId: v.id("guests") },
+  handler: async (
+    ctx,
+    { eventId, guestId },
+  ): Promise<{ ok: true; userId: Id<"users"> } | { ok: false; reason: string }> => {
+    const me = await requireUser(ctx);
+    const event = await ctx.db.get(eventId);
+    if (!event) throw new Error("Event not found");
+    if (event.hostId !== me._id) {
+      return { ok: false, reason: "Only the event host can add admins." };
+    }
+
+    const guest = await ctx.db.get(guestId);
+    if (!guest || guest.eventId !== eventId) {
+      return { ok: false, reason: "Guest not on this event." };
+    }
+    if (!guest.claimedByUserId) {
+      return {
+        ok: false,
+        reason: `${guest.name} hasn't signed in to ivari yet. Ask them to claim their seat first, then promote.`,
+      };
+    }
+    if (guest.claimedByUserId === me._id) {
+      return { ok: false, reason: "You're already the host." };
+    }
+
+    const existing = event.coHostIds ?? [];
+    if (existing.includes(guest.claimedByUserId)) {
+      return { ok: true, userId: guest.claimedByUserId };
+    }
+    await ctx.db.patch(eventId, {
+      coHostIds: [...existing, guest.claimedByUserId],
+      updatedAt: Date.now(),
+    });
+    return { ok: true, userId: guest.claimedByUserId };
+  },
+});
+
 /** Remove a co-host. Host-only. Idempotent. */
 export const removeCoHost = mutation({
   args: { eventId: v.id("events"), userId: v.id("users") },
