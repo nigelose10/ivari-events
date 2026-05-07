@@ -220,62 +220,41 @@ export default function Home() {
     <div className="min-h-screen relative">
       <AmbientBackground />
 
-      {/* ─── Header ─── */}
-      <header className="relative z-10 pt-12 sm:pt-16 pb-8 px-6">
+      {/* ─── Header — minimal: title left, theme + sign-out right.
+          The Forge / Gallery / Chat / You actions live in the bottom nav,
+          not in the hero. One CTA per surface, not three. */}
+      <header className="relative z-10 pt-14 sm:pt-20 pb-10 px-6">
         <div className="max-w-2xl mx-auto">
-          <div className="flex items-start justify-between mb-10">
+          <div className="flex items-start justify-between">
             <motion.div
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
               transition={t}
             >
-              <h1 className="text-4xl sm:text-5xl font-bold tracking-[-0.03em] leading-tight">
-                Events
-              </h1>
-              <p className="text-[var(--text-secondary)] mt-2 text-[0.9375rem]">
-                {user?.name ? `Welcome back, ${user.name}` : "Your gatherings"}
+              <p className="text-[11px] font-semibold tracking-[0.2em] uppercase text-[oklch(0.5_0.02_265)] mb-2">
+                {user?.name ? `Welcome, ${user.name.split(" ")[0]}` : "Welcome"}
               </p>
+              <h1 className="text-4xl sm:text-5xl font-semibold tracking-[-0.035em] leading-[1.05]">
+                Your events
+              </h1>
             </motion.div>
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.3 }}
-              className="flex items-center gap-2"
+              className="flex items-center gap-1"
             >
               <ThemeToggle />
               <button
                 onClick={() => logout()}
-                className="p-2.5 rounded-xl hover:bg-[var(--accent)] transition-colors duration-300 text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
+                className="p-2.5 rounded-xl hover:bg-[oklch(1_0_0/5%)] transition-colors text-[oklch(0.5_0.02_265)] hover:text-foreground"
                 title="Sign out"
+                aria-label="Sign out"
               >
                 <LogOut className="w-5 h-5" />
               </button>
             </motion.div>
           </div>
-
-          {/* Create CTA + Gallery Link */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ ...t, delay: 0.1 }}
-            className="flex gap-3"
-          >
-            <LiquidButton
-              onClick={() => navigate("/forge")}
-              size="lg"
-              className="flex-1 gap-3"
-            >
-              <Plus className="w-5 h-5" />
-              Open The Forge
-            </LiquidButton>
-            <button
-              onClick={() => navigate("/gallery")}
-              className="px-4 rounded-2xl border border-[oklch(1_0_0/10%)] bg-[oklch(1_0_0/4%)] backdrop-blur-xl hover:bg-[oklch(1_0_0/8%)] hover:border-[oklch(1_0_0/15%)] transition-all duration-300 text-[oklch(0.6_0.02_265)] hover:text-foreground"
-              title="The Gallery"
-            >
-              <LayoutGrid className="w-5 h-5" />
-            </button>
-          </motion.div>
         </div>
       </header>
 

@@ -25,6 +25,7 @@ import type * as push from "../push.js";
 import type * as pushData from "../pushData.js";
 import type * as qrcode from "../qrcode.js";
 import type * as rsvps from "../rsvps.js";
+import type * as seed from "../seed.js";
 import type * as templates from "../templates.js";
 import type * as users from "../users.js";
 import type * as weather from "../weather.js";
@@ -53,6 +54,7 @@ declare const fullApi: ApiFromModules<{
   pushData: typeof pushData;
   qrcode: typeof qrcode;
   rsvps: typeof rsvps;
+  seed: typeof seed;
   templates: typeof templates;
   users: typeof users;
   weather: typeof weather;
