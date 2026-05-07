@@ -48,6 +48,88 @@ const t = { duration: 0.6, ease: [0.22, 1, 0.36, 1] as const };
 
 type Tab = "overview" | "analytics" | "guests" | "seating" | "notifications";
 
+/**
+ * Inline helpers for the consolidated Settings + Quick links cards.
+ * These replace the previous wall of separate GlassCards (one per toggle)
+ * with a single grouped surface — matches the design rule of "one glass
+ * panel per logical group, not one per control."
+ */
+type RowIcon = React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
+
+function SettingRow({
+  icon: Icon,
+  iconBg,
+  iconColor,
+  label,
+  desc,
+  checked,
+  onToggle,
+}: {
+  icon: RowIcon;
+  iconBg: string;
+  iconColor: string;
+  label: string;
+  desc: string;
+  checked: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <div className="px-6 py-4 flex items-center justify-between gap-4">
+      <div className="flex items-center gap-3.5 min-w-0 flex-1">
+        <div
+          className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+          style={{ background: iconBg }}
+        >
+          <Icon className="w-4 h-4" style={{ color: iconColor }} />
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-medium truncate">{label}</p>
+          <p className="text-[11px] text-[oklch(0.5_0.02_265)] mt-0.5 truncate">{desc}</p>
+        </div>
+      </div>
+      <div className="glass-toggle flex-shrink-0" data-state={checked ? "on" : "off"} onClick={onToggle}>
+        <div className="glass-toggle-thumb" />
+      </div>
+    </div>
+  );
+}
+
+function QuickLinkRow({
+  icon: Icon,
+  iconBg,
+  iconColor,
+  label,
+  desc,
+  onClick,
+}: {
+  icon: RowIcon;
+  iconBg: string;
+  iconColor: string;
+  label: string;
+  desc: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full px-6 py-4 flex items-center gap-3.5 text-left hover:bg-[oklch(1_0_0/3%)] transition-colors"
+    >
+      <div
+        className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+        style={{ background: iconBg }}
+      >
+        <Icon className="w-4 h-4" style={{ color: iconColor }} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium truncate">{label}</p>
+        <p className="text-[11px] text-[oklch(0.5_0.02_265)] mt-0.5 truncate">{desc}</p>
+      </div>
+      <ExternalLink className="w-4 h-4 text-[oklch(0.5_0.02_265)] flex-shrink-0" />
+    </button>
+  );
+}
+
 export default function Pulse() {
   useAuth({ redirectOnUnauthenticated: true });
   const [, navigate] = useLocation();
@@ -842,151 +924,125 @@ export default function Pulse() {
                   )}
                 </GlassCard>
 
-                {/* Controls Grid */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <GlassCard variant="subtle" className="p-5">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-[oklch(0.75_0.15_55/12%)] flex items-center justify-center">
-                          <MessageSquare className="w-4 h-4 text-[oklch(0.75_0.15_55)]" />
-                        </div>
-                        <div>
-                          <p className="font-medium text-sm">Text Blasts</p>
-                          <p className="text-[0.6875rem] text-[oklch(0.45_0.02_265)]">SMS broadcast</p>
-                        </div>
-                      </div>
-                      <div className="glass-toggle" data-state={event.smsBroadcastEnabled === "1" ? "on" : "off"} onClick={toggleSms}>
-                        <div className="glass-toggle-thumb" />
-                      </div>
-                    </div>
-                  </GlassCard>
-
-                  <GlassCard variant="subtle" className="p-5">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-[oklch(0.65_0.18_300/12%)] flex items-center justify-center">
-                          <Image className="w-4 h-4 text-[oklch(0.65_0.18_300)]" />
-                        </div>
-                        <div>
-                          <p className="font-medium text-sm">Memory Wall</p>
-                          <p className="text-[0.6875rem] text-[oklch(0.45_0.02_265)]">Photo gallery</p>
-                        </div>
-                      </div>
-                      <div className="glass-toggle" data-state={event.memoryWallEnabled === "1" ? "on" : "off"} onClick={toggleMemoryWall}>
-                        <div className="glass-toggle-thumb" />
-                      </div>
-                    </div>
-                  </GlassCard>
-
-                  <GlassCard variant="subtle" className="p-5">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-[oklch(0.7_0.15_220/12%)] flex items-center justify-center">
-                          <Eye className="w-4 h-4 text-[oklch(0.7_0.15_220)]" />
-                        </div>
-                        <div>
-                          <p className="font-medium text-sm">Public discovery</p>
-                          <p className="text-[0.6875rem] text-[oklch(0.45_0.02_265)]">
-                            Show in Home's "Find an event" search
-                          </p>
-                        </div>
-                      </div>
-                      <div className="glass-toggle" data-state={event.isPublic ? "on" : "off"} onClick={togglePublic}>
-                        <div className="glass-toggle-thumb" />
-                      </div>
-                    </div>
-
+                {/* Settings — one card, three switch rows. Replaces 4 stacked
+                    GlassCards with a single grouped surface. */}
+                <GlassCard className="overflow-hidden">
+                  <div className="px-6 pt-5 pb-3">
+                    <p className="text-[10px] font-semibold tracking-[0.18em] uppercase text-[oklch(0.5_0.02_265)]">
+                      Settings
+                    </p>
+                  </div>
+                  <div className="divide-y divide-[oklch(1_0_0/6%)]">
+                    <SettingRow
+                      icon={MessageSquare}
+                      iconBg="oklch(0.75 0.15 55 / 12%)"
+                      iconColor="oklch(0.75 0.15 55)"
+                      label="Text blasts"
+                      desc="SMS broadcast to your guest list"
+                      checked={event.smsBroadcastEnabled === "1"}
+                      onToggle={toggleSms}
+                    />
+                    <SettingRow
+                      icon={Image}
+                      iconBg="oklch(0.65 0.18 300 / 12%)"
+                      iconColor="oklch(0.65 0.18 300)"
+                      label="Memory Wall"
+                      desc="Guest photo gallery + moderation"
+                      checked={event.memoryWallEnabled === "1"}
+                      onToggle={toggleMemoryWall}
+                    />
+                    <SettingRow
+                      icon={Eye}
+                      iconBg="oklch(0.7 0.15 220 / 12%)"
+                      iconColor="oklch(0.7 0.15 220)"
+                      label="Public discovery"
+                      desc="Surface in the Find an event search"
+                      checked={!!event.isPublic}
+                      onToggle={togglePublic}
+                    />
                     {event.isPublic && (
-                      <div className="mt-3 pt-3 border-t border-[oklch(1_0_0/6%)] flex items-center justify-between">
+                      <div className="px-6 py-4 flex items-center justify-between gap-4 bg-[oklch(1_0_0/2%)]">
                         <div className="flex-1 min-w-0">
-                          <p className="text-[11px] font-medium">Public claim flow</p>
-                          <p className="text-[10px] text-[oklch(0.45_0.02_265)] mt-0.5">
+                          <p className="text-[12px] font-medium">Public claim flow</p>
+                          <p className="text-[11px] text-[oklch(0.5_0.02_265)] mt-0.5">
                             {event.claimMode === "name-list"
-                              ? "Visitors find their pre-loaded name → table"
-                              : "One-tap join, anyone can RSVP"}
+                              ? "Visitors find their pre-loaded name → assigned a table"
+                              : "One-tap join — anyone can RSVP"}
                           </p>
                         </div>
                         <button
                           type="button"
                           onClick={toggleClaimMode}
-                          className="text-[10px] font-semibold uppercase tracking-[0.12em] px-2.5 py-1.5 rounded-lg bg-[oklch(1_0_0/5%)] hover:bg-[oklch(1_0_0/9%)] border border-[oklch(1_0_0/8%)] transition-colors"
+                          className="text-[10px] font-semibold uppercase tracking-[0.12em] px-3 py-2 rounded-lg bg-[oklch(1_0_0/5%)] hover:bg-[oklch(1_0_0/9%)] border border-[oklch(1_0_0/8%)] transition-colors flex-shrink-0"
                         >
-                          {event.claimMode === "name-list" ? "Switch to open" : "Switch to name-list"}
+                          {event.claimMode === "name-list" ? "Open RSVP" : "Name list"}
                         </button>
                       </div>
                     )}
-                  </GlassCard>
-
-                  {event.memoryWallEnabled === "1" && (
-                    <GlassCard variant="subtle" className="p-5 cursor-pointer" onClick={() => navigate(`/memory/${event.slug}`)} hover>
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-[oklch(0.65_0.18_300/12%)] flex items-center justify-center">
-                          <ExternalLink className="w-4 h-4 text-[oklch(0.65_0.18_300)]" />
-                        </div>
-                        <div>
-                          <p className="font-medium text-sm">View Memory Wall</p>
-                          <p className="text-[0.6875rem] text-[oklch(0.45_0.02_265)]">Open photo gallery</p>
-                        </div>
-                      </div>
-                    </GlassCard>
-                  )}
-
-                  <GlassCard variant="subtle" className="p-5 cursor-pointer" onClick={() => navigate(`/chats/${event.slug}`)} hover>
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-xl bg-[oklch(0.75_0.15_55/12%)] flex items-center justify-center">
-                        <MessageSquare className="w-4 h-4 text-[oklch(0.75_0.15_55)]" />
-                      </div>
-                      <div>
-                        <p className="font-medium text-sm">Group Chats</p>
-                        <p className="text-[0.6875rem] text-[oklch(0.45_0.02_265)]">Host conversations with guests</p>
-                      </div>
-                    </div>
-                  </GlassCard>
-
-                  <GlassCard variant="subtle" className="p-5 cursor-pointer" onClick={() => navigate(`/live/${event.slug}`)} hover>
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-xl bg-[oklch(0.78_0.16_60/14%)] flex items-center justify-center">
-                        <Zap className="w-4 h-4 text-[oklch(0.78_0.16_60)]" />
-                      </div>
-                      <div>
-                        <p className="font-medium text-sm">Live Event Mode</p>
-                        <p className="text-[0.6875rem] text-[oklch(0.45_0.02_265)]">Real-time party companion</p>
-                      </div>
-                    </div>
-                  </GlassCard>
-
-                  {surveyConfig.length > 0 && (
-                    <GlassCard variant="subtle" className="p-5">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-[oklch(0.6_0.16_180/12%)] flex items-center justify-center">
-                          <ClipboardList className="w-4 h-4 text-[oklch(0.6_0.16_180)]" />
-                        </div>
-                        <div>
-                          <p className="font-medium text-sm">Survey Questions</p>
-                          <p className="text-[0.6875rem] text-[oklch(0.45_0.02_265)]">{surveyConfig.length} question{surveyConfig.length !== 1 ? "s" : ""} active</p>
-                        </div>
-                      </div>
-                    </GlassCard>
-                  )}
-                </div>
-
-                {/* Danger Zone */}
-                <GlassCard variant="subtle" className="p-5">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-xl bg-[oklch(0.5_0.18_25/12%)] flex items-center justify-center">
-                        <Trash2 className="w-4 h-4 text-[oklch(0.7_0.15_25)]" />
-                      </div>
-                      <div>
-                        <p className="font-medium text-sm text-[oklch(0.7_0.15_25)]">Delete Event</p>
-                        <p className="text-[0.6875rem] text-[oklch(0.45_0.02_265)]">This cannot be undone</p>
-                      </div>
-                    </div>
-                    <LiquidButton variant="danger" size="sm" onClick={() => { if (confirm("Are you sure you want to delete this event?")) deleteMutation.mutate(); }} loading={false}>
-                      Delete
-                    </LiquidButton>
                   </div>
                 </GlassCard>
+
+                {/* Quick links — one card, three rows. Replaces 3 nav cards. */}
+                <GlassCard className="overflow-hidden">
+                  <div className="px-6 pt-5 pb-3">
+                    <p className="text-[10px] font-semibold tracking-[0.18em] uppercase text-[oklch(0.5_0.02_265)]">
+                      Quick links
+                    </p>
+                  </div>
+                  <div className="divide-y divide-[oklch(1_0_0/6%)]">
+                    {event.memoryWallEnabled === "1" && (
+                      <QuickLinkRow
+                        icon={Image}
+                        iconBg="oklch(0.65 0.18 300 / 12%)"
+                        iconColor="oklch(0.65 0.18 300)"
+                        label="View Memory Wall"
+                        desc="Open the photo gallery"
+                        onClick={() => navigate(`/memory/${event.slug}`)}
+                      />
+                    )}
+                    <QuickLinkRow
+                      icon={MessageSquare}
+                      iconBg="oklch(0.75 0.15 55 / 12%)"
+                      iconColor="oklch(0.75 0.15 55)"
+                      label="Group chats"
+                      desc="Host conversations with guests"
+                      onClick={() => navigate(`/chats/${event.slug}`)}
+                    />
+                    <QuickLinkRow
+                      icon={Zap}
+                      iconBg="oklch(0.78 0.16 60 / 14%)"
+                      iconColor="oklch(0.78 0.16 60)"
+                      label="Live event mode"
+                      desc="Real-time photo wall + check-in"
+                      onClick={() => navigate(`/live/${event.slug}`)}
+                    />
+                    {surveyConfig.length > 0 && (
+                      <div className="px-6 py-4 flex items-center gap-3.5">
+                        <div
+                          className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                          style={{ background: "oklch(0.6 0.16 180 / 12%)" }}
+                        >
+                          <ClipboardList className="w-4 h-4" style={{ color: "oklch(0.6 0.16 180)" }} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium">Survey questions</p>
+                          <p className="text-[11px] text-[oklch(0.5_0.02_265)] mt-0.5">
+                            {surveyConfig.length} active question{surveyConfig.length !== 1 ? "s" : ""}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </GlassCard>
+
+                {/* Danger zone — kept separate, intentional visual rest. */}
+                <button
+                  type="button"
+                  onClick={() => { if (confirm("Are you sure you want to delete this event?")) deleteMutation.mutate(); }}
+                  className="w-full text-[12px] font-semibold tracking-[0.04em] text-[oklch(0.7_0.15_25)] hover:text-[oklch(0.78_0.18_25)] transition-colors py-4"
+                >
+                  Delete event
+                </button>
               </motion.div>
             )}
 

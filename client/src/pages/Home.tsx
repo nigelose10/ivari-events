@@ -38,6 +38,7 @@ import { format, isPast, isToday, isTomorrow, formatDistanceToNow } from "date-f
 import { toast } from "sonner";
 import { runHomeTour } from "@/lib/onboarding";
 import EventDiscovery from "@/components/EventDiscovery";
+import { Skeleton } from "boneyard-js/react";
 
 const t = { duration: 0.7, ease: [0.22, 1, 0.36, 1] as const };
 
@@ -279,14 +280,41 @@ export default function Home() {
       </header>
 
       {/* ─── Events ─── */}
-      <div className="relative z-10 px-6 pb-16">
-        <div className="max-w-2xl mx-auto space-y-4">
-          {/* Public-event discovery — type-to-find. Renders only for signed-in
-              users (component is harmless without; gating here keeps the
-              unauth landing clean). */}
+      <div className="relative z-10 px-6 pb-24 pt-2">
+        <div className="max-w-2xl mx-auto space-y-8">
+          {/* Public-event discovery — type-to-find. Anon-tolerant. */}
           <EventDiscovery />
 
-          {eventList.length === 0 ? (
+          {/* Loading state — boneyard skeleton replaces the legacy spinner.
+              The fallback below renders pre-capture; once `pnpm boneyard:build`
+              runs against the live dev server, real bones overlay this. */}
+          {eventsQuery.isLoading ? (
+            <Skeleton
+              name="home-events-list"
+              loading
+              animate="shimmer"
+              fallback={
+                <div className="space-y-3">
+                  {[0, 1, 2].map((i) => (
+                    <div
+                      key={i}
+                      className="rounded-2xl bg-[oklch(1_0_0/3%)] border border-[oklch(1_0_0/6%)] p-4 flex gap-4 shimmer"
+                      style={{ animationDelay: `${i * 0.08}s` }}
+                    >
+                      <div className="w-20 h-20 rounded-xl bg-[oklch(1_0_0/4%)] flex-shrink-0" />
+                      <div className="flex-1 space-y-2 py-1">
+                        <div className="h-4 rounded-md bg-[oklch(1_0_0/4%)] w-3/4" />
+                        <div className="h-3 rounded-md bg-[oklch(1_0_0/3%)] w-1/2" />
+                        <div className="h-3 rounded-md bg-[oklch(1_0_0/3%)] w-2/3" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              }
+            >
+              <div />
+            </Skeleton>
+          ) : eventList.length === 0 ? (
             <GlassCard className="p-16 text-center" delay={0.2}>
               <div className="flex flex-col items-center gap-5">
                 <div className="w-16 h-16 rounded-2xl bg-[oklch(1_0_0/5%)] flex items-center justify-center">
