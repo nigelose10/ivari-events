@@ -198,7 +198,7 @@ export const submitWithToken = action({
     token: v.string(),
     ...RSVP_INPUT,
   },
-  handler: async (ctx, { token, ...input }) => {
+  handler: async (ctx, { token, ...input }): Promise<unknown> => {
     const payload = await ctx.runAction(
       internal.guestTokens.verifyGuestTokenInternal,
       { token },

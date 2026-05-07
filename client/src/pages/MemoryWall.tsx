@@ -28,10 +28,12 @@
  * - [ ] Empty state: show ghost masonry skeletons (.shimmer) until first upload
  * - [ ] Upload preview: full-screen sheet on mobile, side-panel on desktop
  */
-import { useState, useCallback, useMemo, useRef } from "react";
+import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { useQuery, useAction, useMutation } from "convex/react";
+import { useUser } from "@stackframe/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
+import { moderateImage } from "@/lib/moderation";
 import { GlassCard } from "@/components/GlassCard";
 import { LiquidButton } from "@/components/LiquidButton";
 import { AmbientBackground } from "@/components/AmbientBackground";
@@ -90,22 +92,58 @@ export default function MemoryWall() {
   const isHost = hostInfo?.isHost ?? false;
   const eventId = event?._id as Id<"events"> | undefined;
 
-  // Upload pipeline. Guests use the action chain; hosts use the mutation.
+  // Upload pipeline. Three flavors:
+  //   - host (signed-in, owns event): direct mutation, lands "approved"
+  //   - signed-in user (not host, may or may not be a claimed guest): direct
+  //     mutation under their identity, lands "pending"
+  //   - token-only guest (anonymous claim via gt= JWT): action chain
+  // The signed-in user path is what makes "your username + photo posts
+  // automatically" actually work.
+  const stackUser = useUser();
   const requestGuestUploadUrl = useAction(api.photos.requestUploadUrl);
   const submitGuest = useAction(api.photos.submitGuestPhoto);
   const generateHostUploadUrl = useMutation(api.photos.generateUploadUrl);
   const submitHost = useMutation(api.photos.submitHostPhoto);
+  const submitUser = useMutation(api.photos.submitUserPhoto);
+  const me = useQuery(api.users.me, stackUser ? {} : "skip");
+
+  // Auto-fill the uploader name from the signed-in user's profile so they
+  // never have to type it in. They can still override before submit.
+  useEffect(() => {
+    if (uploaderName) return; // don't clobber a manual edit
+    if (me?.username) {
+      setUploaderName(`@${me.username}`);
+    } else if (me?.name) {
+      setUploaderName(me.name);
+    }
+    // The dependency on uploaderName is intentional — this only runs on the
+    // first render where me arrives. Subsequent renders see uploaderName set
+    // and bail at the top.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [me]);
 
   const isLoading = event === undefined || photos === undefined;
   const photoList = photos ?? [];
 
-  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 10 * 1024 * 1024) {
       toast.error("File too large (max 10MB)");
       return;
     }
+
+    // Auto-curation preflight — NSFWJS runs entirely in the browser,
+    // weights cached after first load. Reject obviously NSFW content
+    // before it ever hits Convex storage. Soft-fails to "ok" if the model
+    // can't load so a flaky CDN never blocks a legitimate upload — the
+    // host moderation queue stays as the safety net.
+    const verdict = await moderateImage(file);
+    if (!verdict.ok) {
+      toast.error(verdict.reason);
+      return;
+    }
+
     setSelectedFile(file);
     const reader = new FileReader();
     reader.onload = () => setPreviewUrl(reader.result as string);
@@ -113,15 +151,21 @@ export default function MemoryWall() {
     setShowUpload(true);
   }, []);
 
+  // Three upload paths share two phases (mint → POST), differ at persist.
+  // Pre-resolve which one we're on so the body reads top-down.
+  const isSignedInUser = !!stackUser && !isHost;
+
   const handleUpload = useCallback(async () => {
     if (!selectedFile || !eventId) return;
     setUploading(true);
     try {
-      // Step 1: mint an upload URL. Hosts get one via direct mutation;
-      // guests must go through the token-verifying action.
-      const uploadUrl = isHost
-        ? await generateHostUploadUrl()
-        : await requestGuestUploadUrl({ token });
+      // Step 1: mint an upload URL.
+      //   - host or signed-in user: direct mutation (auth via Stack JWT)
+      //   - token-only guest: action chain that verifies the gt= JWT first
+      const uploadUrl =
+        isHost || isSignedInUser
+          ? await generateHostUploadUrl()
+          : await requestGuestUploadUrl({ token });
 
       // Step 2: direct POST the binary to the URL Convex returned.
       const res = await fetch(uploadUrl, {
@@ -132,8 +176,9 @@ export default function MemoryWall() {
       if (!res.ok) throw new Error(`Upload failed (${res.status})`);
       const { storageId } = (await res.json()) as { storageId: Id<"_storage"> };
 
-      // Step 3: persist the row. Host uploads land approved; guest uploads
-      // land pending and are invisible until a host approves them.
+      // Step 3: persist. Host → approved. Signed-in user → pending, with
+      // username + avatar denormalized into the row server-side. Token-only
+      // guest → pending, with the manual-typed name.
       if (isHost) {
         await submitHost({
           eventId,
@@ -142,6 +187,13 @@ export default function MemoryWall() {
           caption: caption.trim() || undefined,
         });
         toast.success("Photo published");
+      } else if (isSignedInUser) {
+        await submitUser({
+          eventId,
+          storageId,
+          caption: caption.trim() || undefined,
+        });
+        toast.success("Posted — pending host approval");
       } else {
         await submitGuest({
           guestToken: token,
@@ -166,6 +218,7 @@ export default function MemoryWall() {
     selectedFile,
     eventId,
     isHost,
+    isSignedInUser,
     token,
     uploaderName,
     caption,
@@ -173,6 +226,7 @@ export default function MemoryWall() {
     generateHostUploadUrl,
     submitGuest,
     submitHost,
+    submitUser,
   ]);
 
   const openLightbox = (index: number) => setLightboxIndex(index);
@@ -339,9 +393,18 @@ export default function MemoryWall() {
                           {photo.caption && (
                             <p className="text-sm text-foreground font-medium line-clamp-2 mb-1">{photo.caption}</p>
                           )}
-                          <p className="text-xs text-[oklch(0.55_0.02_265)]">
-                            {photo.uploaderName || "Anonymous"}
-                          </p>
+                          <div className="flex items-center gap-2">
+                            {(photo as any).uploaderAvatarUrl ? (
+                              <img
+                                src={(photo as any).uploaderAvatarUrl}
+                                alt=""
+                                className="w-5 h-5 rounded-full object-cover border border-[oklch(1_0_0/15%)]"
+                              />
+                            ) : null}
+                            <p className="text-xs text-[oklch(0.55_0.02_265)]">
+                              {photo.uploaderName || "Anonymous"}
+                            </p>
+                          </div>
                         </div>
                       </div>
                       {/* Refractive glass frame */}
@@ -396,16 +459,38 @@ export default function MemoryWall() {
                   </p>
                 )}
 
-                <div>
-                  <label className="text-xs font-semibold tracking-[0.15em] uppercase text-[oklch(0.5_0.02_265)] mb-2 block">Your Name</label>
-                  <input
-                    type="text"
-                    value={uploaderName}
-                    onChange={(e) => setUploaderName(e.target.value)}
-                    placeholder="Anonymous"
-                    className="glass-input"
-                  />
-                </div>
+                {isSignedInUser ? (
+                  <div className="flex items-center gap-3 px-3 py-2 rounded-xl bg-[oklch(1_0_0/4%)] border border-[oklch(1_0_0/8%)]">
+                    {me?.avatarUrl ? (
+                      <img
+                        src={me.avatarUrl}
+                        alt=""
+                        className="w-8 h-8 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-8 h-8 rounded-full bg-[oklch(1_0_0/8%)]" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">
+                        {me?.username ? `@${me.username}` : me?.name || "ivari user"}
+                      </p>
+                      <p className="text-[10px] uppercase tracking-[0.15em] text-[oklch(0.5_0.02_265)]">
+                        Posting as your account
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="text-xs font-semibold tracking-[0.15em] uppercase text-[oklch(0.5_0.02_265)] mb-2 block">Your Name</label>
+                    <input
+                      type="text"
+                      value={uploaderName}
+                      onChange={(e) => setUploaderName(e.target.value)}
+                      placeholder="Anonymous"
+                      className="glass-input"
+                    />
+                  </div>
+                )}
                 <div>
                   <label className="text-xs font-semibold tracking-[0.15em] uppercase text-[oklch(0.5_0.02_265)] mb-2 block">Caption</label>
                   <input

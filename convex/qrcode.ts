@@ -110,7 +110,10 @@ export const generateAndStore = action({
       color: PRINT_PRESET,
       errorCorrectionLevel: "H",
     });
-    const blob = new Blob([printBuffer], { type: "image/png" });
+    // Cast to Uint8Array view to satisfy the BlobPart strict type — Buffer
+    // is structurally compatible but TS narrows ArrayBufferLike too loosely
+    // when SharedArrayBuffer is in the lib (Node 20+ types).
+    const blob = new Blob([new Uint8Array(printBuffer)], { type: "image/png" });
     const storageId = await ctx.storage.store(blob);
     const downloadUrl = await ctx.storage.getUrl(storageId);
     if (!downloadUrl) throw new Error("Failed to resolve QR storage URL");

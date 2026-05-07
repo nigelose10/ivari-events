@@ -297,7 +297,7 @@ export const listForGuestInternal = internalQuery({
 /** Public action: list chats a guest belongs to. Verifies token first. */
 export const listForGuest = action({
   args: { eventId: v.id("events"), guestToken: v.string() },
-  handler: async (ctx, { eventId, guestToken }) => {
+  handler: async (ctx, { eventId, guestToken }): Promise<unknown> => {
     const payload = await ctx.runAction(
       internal.guestTokens.verifyGuestTokenInternal,
       { token: guestToken },
@@ -335,7 +335,10 @@ export const listMessagesAsGuest = action({
     limit: v.optional(v.number()),
     beforeMs: v.optional(v.number()),
   },
-  handler: async (ctx, { chatId, guestToken, limit, beforeMs }) => {
+  handler: async (
+    ctx,
+    { chatId, guestToken, limit, beforeMs },
+  ): Promise<unknown> => {
     const payload = await ctx.runAction(
       internal.guestTokens.verifyGuestTokenInternal,
       { token: guestToken },
@@ -688,7 +691,7 @@ export const postMessageAsGuest = action({
     attachmentStorageId: v.optional(v.id("_storage")),
     replyToMessageId: v.optional(v.id("messages")),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<unknown> => {
     const payload = await ctx.runAction(
       internal.guestTokens.verifyGuestTokenInternal,
       { token: args.guestToken },
@@ -832,7 +835,7 @@ export const markReadAsGuestInternal = internalMutation({
 
 export const markReadAsGuest = action({
   args: { chatId: v.id("chats"), guestToken: v.string() },
-  handler: async (ctx, { chatId, guestToken }) => {
+  handler: async (ctx, { chatId, guestToken }): Promise<unknown> => {
     const payload = await ctx.runAction(
       internal.guestTokens.verifyGuestTokenInternal,
       { token: guestToken },

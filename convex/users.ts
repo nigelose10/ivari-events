@@ -25,13 +25,18 @@ import type { Doc, Id } from "./_generated/dataModel";
  * after Stack Auth reports `isAuthenticated`.
  */
 export const ensureUser = mutation({
-  args: {},
+  args: {
+    /** Avatar URL pulled client-side from Stack Auth's `useUser().profileImageUrl`.
+     *  Optional — accepted only on initial bootstrap; subsequent sign-ins refresh it.
+     *  Stored in our row so Memory Wall posts can denormalize it at upload time. */
+    avatarUrl: v.optional(v.string()),
+  },
   returns: v.object({
     _id: v.id("users"),
     tokenIdentifier: v.string(),
     role: v.union(v.literal("user"), v.literal("admin")),
   }),
-  handler: async (ctx) => {
+  handler: async (ctx, { avatarUrl }) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Unauthorized — no JWT");
 
@@ -56,10 +61,11 @@ export const ensureUser = mutation({
       .unique();
 
     if (existing) {
-      // Non-destructive patch — keep existing role, refresh name/email/lastSignedIn.
+      // Non-destructive patch — keep existing role, refresh name/email/avatar/lastSignedIn.
       await ctx.db.patch(existing._id, {
         name: name ?? existing.name,
         email: email ?? existing.email,
+        avatarUrl: avatarUrl ?? existing.avatarUrl,
         updatedAt: now,
         lastSignedIn: now,
       });
@@ -74,6 +80,7 @@ export const ensureUser = mutation({
       tokenIdentifier,
       name,
       email,
+      avatarUrl,
       loginMethod: "stack-auth",
       role: "user",
       updatedAt: now,
@@ -85,6 +92,52 @@ export const ensureUser = mutation({
       tokenIdentifier,
       role: "user" as const,
     };
+  },
+});
+
+/** User-facing profile editor — username + tagline only (name/email/avatar
+ *  live in Stack Auth and are pushed in via `ensureUser`). Username uniqueness
+ *  is best-effort: enforced at write time via the `by_username` index. */
+export const updateProfile = mutation({
+  args: {
+    username: v.optional(v.string()),
+    tagline: v.optional(v.string()),
+  },
+  handler: async (ctx, { username, tagline }) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthorized");
+    const me = await ctx.db
+      .query("users")
+      .withIndex("by_tokenIdentifier", (q) =>
+        q.eq("tokenIdentifier", identity.tokenIdentifier),
+      )
+      .unique();
+    if (!me) throw new Error("User row missing — sign in again");
+
+    if (username !== undefined && username !== me.username) {
+      const trimmed = username.trim();
+      if (trimmed.length < 3 || trimmed.length > 24) {
+        throw new Error("Username must be 3–24 characters");
+      }
+      if (!/^[a-zA-Z0-9_.]+$/.test(trimmed)) {
+        throw new Error("Username can only contain letters, numbers, _ and .");
+      }
+      const collision = await ctx.db
+        .query("users")
+        .withIndex("by_username", (q) => q.eq("username", trimmed))
+        .first();
+      if (collision && collision._id !== me._id) {
+        throw new Error("Username is taken");
+      }
+      await ctx.db.patch(me._id, { username: trimmed, updatedAt: Date.now() });
+    }
+
+    if (tagline !== undefined) {
+      const trimmed = tagline.slice(0, 140);
+      await ctx.db.patch(me._id, { tagline: trimmed, updatedAt: Date.now() });
+    }
+
+    return { success: true };
   },
 });
 

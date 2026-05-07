@@ -189,7 +189,7 @@ export const generateUploadUrl = mutation({
  */
 export const requestUploadUrl = action({
   args: { token: v.string() },
-  handler: async (ctx, { token }) => {
+  handler: async (ctx, { token }): Promise<string> => {
     const payload = await ctx.runAction(
       internal.guestTokens.verifyGuestTokenInternal,
       { token },
@@ -231,6 +231,11 @@ export const savePhotoInternal = internalMutation({
     eventId: v.id("events"),
     storageId: v.id("_storage"),
     uploaderName: v.optional(v.string()),
+    /** Signed-in user denormalization — passed through from `submitUserPhoto`
+     *  and `submitGuestPhoto` (when the guest is also a Stack user). Lets the
+     *  Memory Wall render @username + avatar next to the post. */
+    uploaderUserId: v.optional(v.id("users")),
+    uploaderAvatarUrl: v.optional(v.string()),
     caption: v.optional(v.string()),
     // Internal callers (`submitGuestPhoto`, `submitHostPhoto`) pass the
     // moderation status they want. Defaults to "pending" — guest is the
@@ -245,8 +250,16 @@ export const savePhotoInternal = internalMutation({
     moderatedBy: v.optional(v.id("users")),
   },
   handler: async (ctx, args) => {
-    const { eventId, storageId, uploaderName, caption, status, moderatedBy } =
-      args;
+    const {
+      eventId,
+      storageId,
+      uploaderName,
+      uploaderUserId,
+      uploaderAvatarUrl,
+      caption,
+      status,
+      moderatedBy,
+    } = args;
     if (uploaderName && uploaderName.length > 300) {
       throw new Error("Uploader name too long");
     }
@@ -266,6 +279,8 @@ export const savePhotoInternal = internalMutation({
     const photoId = await ctx.db.insert("photos", {
       eventId,
       uploaderName: uploaderName || "Anonymous",
+      uploaderUserId,
+      uploaderAvatarUrl,
       imageUrl: url,
       fileKey: storageId,
       caption,
@@ -276,6 +291,61 @@ export const savePhotoInternal = internalMutation({
     });
 
     return { _id: photoId, imageUrl: url, status: finalStatus };
+  },
+});
+
+/** Signed-in user submission. The caller is a Stack-auth user posting under
+ *  their own identity (not a token-only guest), so we denormalize their
+ *  `users` row into the photo. Status = "pending" so it still goes through
+ *  host moderation; if the caller is the host, it lands "approved" instead.
+ *
+ *  This is what the Memory Wall calls when the user is signed in — gives
+ *  them username + avatar attribution automatically. */
+export const submitUserPhoto = mutation({
+  args: {
+    eventId: v.id("events"),
+    storageId: v.id("_storage"),
+    caption: v.optional(v.string()),
+  },
+  handler: async (ctx, { eventId, storageId, caption }) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthorized");
+    const me = await ctx.db
+      .query("users")
+      .withIndex("by_tokenIdentifier", (q) =>
+        q.eq("tokenIdentifier", identity.tokenIdentifier),
+      )
+      .unique();
+    if (!me) throw new Error("User row missing — sign in again");
+
+    const event = await ctx.db.get(eventId);
+    if (!event) throw new Error("Event not found");
+    if (event.memoryWallEnabled !== "1") {
+      throw new Error("Photo uploads not enabled for this event");
+    }
+    if (caption && caption.length > 1000) throw new Error("Caption too long");
+
+    const url = await ctx.storage.getUrl(storageId);
+    if (!url) throw new Error("Failed to resolve storage URL");
+
+    const isHost = event.hostId === me._id;
+    const status = isHost ? ("approved" as const) : ("pending" as const);
+
+    const photoId = await ctx.db.insert("photos", {
+      eventId,
+      uploaderName: me.username || me.name || "ivari user",
+      uploaderUserId: me._id,
+      uploaderAvatarUrl: me.avatarUrl,
+      imageUrl: url,
+      fileKey: storageId,
+      caption,
+      status,
+      moderatedBy: isHost ? me._id : undefined,
+      moderatedAt: isHost ? Date.now() : undefined,
+      featured: false,
+    });
+
+    return { success: true, photoId, status };
   },
 });
 
@@ -297,7 +367,10 @@ export const savePhotoRecord = action({
     uploaderName: v.optional(v.string()),
     caption: v.optional(v.string()),
   },
-  handler: async (ctx, { token, storageId, uploaderName, caption }) => {
+  handler: async (
+    ctx,
+    { token, storageId, uploaderName, caption },
+  ): Promise<{ _id: Id<"photos">; imageUrl: string; status: string }> => {
     const payload = await ctx.runAction(
       internal.guestTokens.verifyGuestTokenInternal,
       { token },
@@ -331,7 +404,10 @@ export const submitGuestPhoto = action({
     uploaderName: v.optional(v.string()),
     caption: v.optional(v.string()),
   },
-  handler: async (ctx, { guestToken, storageId, uploaderName, caption }) => {
+  handler: async (
+    ctx,
+    { guestToken, storageId, uploaderName, caption },
+  ): Promise<{ success: boolean; photoId: Id<"photos">; message: string }> => {
     const payload = await ctx.runAction(
       internal.guestTokens.verifyGuestTokenInternal,
       { token: guestToken },
@@ -385,7 +461,9 @@ export const submitHostPhoto = mutation({
 
     const photoId = await ctx.db.insert("photos", {
       eventId,
-      uploaderName: uploaderName || user.name || "Host",
+      uploaderName: uploaderName || user.username || user.name || "Host",
+      uploaderUserId: user._id,
+      uploaderAvatarUrl: user.avatarUrl,
       imageUrl: url,
       fileKey: storageId,
       caption,

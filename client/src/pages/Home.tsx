@@ -14,7 +14,7 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { GlassCard } from "@/components/GlassCard";
 import { LiquidButton } from "@/components/LiquidButton";
 import { AmbientBackground } from "@/components/AmbientBackground";
@@ -36,6 +36,8 @@ import { useLocation } from "wouter";
 import { getLoginUrl } from "@/const";
 import { format, isPast, isToday, isTomorrow, formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
+import { runHomeTour } from "@/lib/onboarding";
+import EventDiscovery from "@/components/EventDiscovery";
 
 const t = { duration: 0.7, ease: [0.22, 1, 0.36, 1] as const };
 
@@ -94,6 +96,15 @@ export default function Home() {
     () => (claimedEventsRaw ?? []).map((e: any) => ({ ...e, id: e._id })),
     [claimedEventsRaw],
   );
+
+  // First-run onboarding tour — driver.js, gated by localStorage flag.
+  // Wait until we know the user is authenticated and events have loaded
+  // (the tour points at the events section, which only paints once).
+  useEffect(() => {
+    if (!isAuthenticated || authLoading) return;
+    if (eventsRaw === undefined) return;
+    runHomeTour();
+  }, [isAuthenticated, authLoading, eventsRaw]);
 
   const duplicateEvent = useMutation(api.events.duplicate);
   const [isDuplicating, setIsDuplicating] = useState(false);
@@ -270,6 +281,11 @@ export default function Home() {
       {/* ─── Events ─── */}
       <div className="relative z-10 px-6 pb-16">
         <div className="max-w-2xl mx-auto space-y-4">
+          {/* Public-event discovery — type-to-find. Renders only for signed-in
+              users (component is harmless without; gating here keeps the
+              unauth landing clean). */}
+          <EventDiscovery />
+
           {eventList.length === 0 ? (
             <GlassCard className="p-16 text-center" delay={0.2}>
               <div className="flex flex-col items-center gap-5">
@@ -452,7 +468,7 @@ function EventSection({
   startIndex: number;
 }) {
   return (
-    <div className="space-y-3">
+    <div className="space-y-3" data-tour="home-events-section">
       <motion.p
         className="text-xs font-semibold tracking-[0.15em] uppercase text-[oklch(0.5_0.02_265)] px-1"
         initial={{ opacity: 0 }}

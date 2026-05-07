@@ -8,9 +8,11 @@
  * @module
  */
 
+import type * as ai from "../ai.js";
 import type * as analytics from "../analytics.js";
 import type * as chats from "../chats.js";
 import type * as events from "../events.js";
+import type * as friends from "../friends.js";
 import type * as geocoding from "../geocoding.js";
 import type * as guestTokens from "../guestTokens.js";
 import type * as guests from "../guests.js";
@@ -19,6 +21,8 @@ import type * as lib_permissions from "../lib/permissions.js";
 import type * as notificationActions from "../notificationActions.js";
 import type * as notifications from "../notifications.js";
 import type * as photos from "../photos.js";
+import type * as push from "../push.js";
+import type * as pushData from "../pushData.js";
 import type * as qrcode from "../qrcode.js";
 import type * as rsvps from "../rsvps.js";
 import type * as templates from "../templates.js";
@@ -32,9 +36,11 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  ai: typeof ai;
   analytics: typeof analytics;
   chats: typeof chats;
   events: typeof events;
+  friends: typeof friends;
   geocoding: typeof geocoding;
   guestTokens: typeof guestTokens;
   guests: typeof guests;
@@ -43,6 +49,8 @@ declare const fullApi: ApiFromModules<{
   notificationActions: typeof notificationActions;
   notifications: typeof notifications;
   photos: typeof photos;
+  push: typeof push;
+  pushData: typeof pushData;
   qrcode: typeof qrcode;
   rsvps: typeof rsvps;
   templates: typeof templates;

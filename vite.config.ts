@@ -168,6 +168,11 @@ const plugins = [
     },
     workbox: {
       globPatterns: ["**/*.{js,css,html,ico,png,svg,webp,woff,woff2}"],
+      // Inject Web Push event listeners into the generated SW.
+      // The script lives in client/public/push-handlers.js and is loaded
+      // from the SW scope via importScripts(). See convex/push.ts for the
+      // matching server-side payload shape.
+      importScripts: ["/push-handlers.js"],
       // Bump precache size cap to 5 MiB — IVARI's main bundle is ~2.8 MB.
       // TODO: route-level React.lazy code-splitting will get us back under default 2 MiB.
       maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,

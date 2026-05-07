@@ -14,13 +14,16 @@
  */
 import { useEffect, useRef } from "react";
 import { useUser } from "@stackframe/react";
-import { useMutation } from "convex/react";
+import { useMutation, useConvex } from "convex/react";
 import { api } from "../../../convex/_generated/api";
+import { registerForPush, getPushPermissionState } from "../lib/push";
 
 export default function UserBootstrap() {
   const stackUser = useUser();
+  const convex = useConvex();
   const ensureUser = useMutation(api.users.ensureUser);
   const lastBootstrappedFor = useRef<string | null>(null);
+  const pushAttemptedFor = useRef<string | null>(null);
 
   useEffect(() => {
     // useUser() returns undefined while hydrating, null when signed out,
@@ -35,13 +38,38 @@ export default function UserBootstrap() {
 
     lastBootstrappedFor.current = stackUser.id;
 
-    ensureUser({}).catch((err) => {
+    // Stack's CurrentUser exposes `profileImageUrl` (camelCase). Pass it
+    // through so the Convex `users` row stores a snapshot — keeps Memory
+    // Wall posts and avatar bubbles independent of Stack's runtime state.
+    const avatarUrl =
+      (stackUser as { profileImageUrl?: string | null }).profileImageUrl ??
+      undefined;
+
+    ensureUser({ avatarUrl: avatarUrl ?? undefined }).catch((err) => {
       // eslint-disable-next-line no-console
       console.error("[UserBootstrap] ensureUser failed", err);
       // Allow retry on next render — clear the marker.
       lastBootstrappedFor.current = null;
     });
-  }, [stackUser, ensureUser]);
+
+    // Push registration — opportunistic. Skip if the user has already
+    // denied (we don't re-prompt) and skip on devices without support.
+    // The permission `default` case still re-prompts here because the
+    // browser only shows the dialog on a user-driven interaction; the
+    // `requestPermission` call inside `registerForPush` will quietly
+    // resolve to "default" until that happens. Re-running on every sign-in
+    // is cheap and gives us a chance to catch the user when they grant later.
+    if (pushAttemptedFor.current !== stackUser.id) {
+      pushAttemptedFor.current = stackUser.id;
+      const state = getPushPermissionState();
+      if (state === "granted") {
+        registerForPush(convex).catch((err) => {
+          // eslint-disable-next-line no-console
+          console.warn("[UserBootstrap] push subscribe failed", err);
+        });
+      }
+    }
+  }, [stackUser, ensureUser, convex]);
 
   return null;
 }

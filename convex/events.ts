@@ -52,6 +52,28 @@ async function requireUser(
   return user;
 }
 
+/** Race-tolerant variant for read-only queries on Home / lists.
+ *
+ *  After Stack Auth flips to authenticated, `UserBootstrap` fires a separate
+ *  `ensureUser` mutation that upserts the row. Reactive queries that gate on
+ *  `isAuthenticated` will subscribe before that mutation completes, so for the
+ *  first one or two ticks the user row genuinely doesn't exist yet. Returning
+ *  null lets callers render an empty list; the bootstrap creates the row, the
+ *  query re-fires, and real data appears within a frame or two. Mutations and
+ *  ownership-sensitive queries still use the strict `requireUser`. */
+async function requireUserOrNull(
+  ctx: QueryCtx | MutationCtx,
+): Promise<Doc<"users"> | null> {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) return null;
+  return ctx.db
+    .query("users")
+    .withIndex("by_tokenIdentifier", (q) =>
+      q.eq("tokenIdentifier", identity.tokenIdentifier),
+    )
+    .unique();
+}
+
 /** Lookup an event and assert the caller owns it. Throws on miss/unauth. */
 async function requireOwnedEvent(
   ctx: QueryCtx | MutationCtx,
@@ -124,7 +146,8 @@ async function withResolvedImage<T extends Doc<"events">>(
 export const list = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireUser(ctx);
+    const user = await requireUserOrNull(ctx);
+    if (!user) return [];
     const events = await ctx.db
       .query("events")
       .withIndex("by_hostId", (q) => q.eq("hostId", user._id))
@@ -280,6 +303,114 @@ export const myClaimedEvents = query({
   },
 });
 
+/**
+ * Public-event discovery — full-text search over titles of events that are
+ * marked `isPublic: true` and currently `active`. Returns up to 10 hits with
+ * guest-safe fields (no hostId, no guestTokenSalt) so unauthenticated callers
+ * can preview before signing in.
+ *
+ * Trims and rejects very-short queries (<2 chars) to keep the index from
+ * returning the firehose. The `prefix` mode treats the last token as a
+ * prefix — typing "summ" matches "Summer Block Party".
+ */
+export const searchPublic = query({
+  args: { q: v.string() },
+  handler: async (ctx, { q }) => {
+    const trimmed = q.trim();
+    if (trimmed.length < 2) return [];
+
+    const hits = await ctx.db
+      .query("events")
+      .withSearchIndex("search_title_public", (idx) =>
+        idx.search("title", trimmed).eq("isPublic", true).eq("status", "active"),
+      )
+      .take(10);
+
+    return Promise.all(
+      hits.map(async (e) => {
+        const resolved = await withResolvedImage(ctx, e);
+        const guests = await ctx.db
+          .query("guests")
+          .withIndex("by_eventId", (q) => q.eq("eventId", e._id))
+          .collect();
+        return {
+          _id: e._id,
+          slug: e.slug,
+          title: e.title,
+          description: e.description,
+          imageUrl: resolved.imageUrl,
+          eventDate: e.eventDate,
+          locationName: e.locationName,
+          themeColor: e.themeColor,
+          guestCount: guests.length,
+        };
+      }),
+    );
+  },
+});
+
+/**
+ * Join a public event as a self-claimed guest. Idempotent — calling twice
+ * returns "already-joined" rather than inserting a duplicate guest row.
+ *
+ * Auth: requires a Stack-auth user. The new `guests` row carries
+ * `claimedByUserId = me._id` so the event immediately surfaces in the
+ * user's "I'm Attending" list on Home (same path as friend-invite + QR claim).
+ */
+export const joinPublicEvent = mutation({
+  args: { eventId: v.id("events") },
+  handler: async (ctx, { eventId }) => {
+    const me = await requireUser(ctx);
+    const event = await ctx.db.get(eventId);
+    if (!event) throw new Error("Event not found");
+    if (!event.isPublic) throw new Error("This event isn't public");
+    if (event.status !== "active") throw new Error("This event isn't active");
+    if (event.hostId === me._id) {
+      // Hosts don't get a guest row for their own event.
+      return { state: "you-host-this" as const };
+    }
+
+    // Already joined?
+    const existing = await ctx.db
+      .query("guests")
+      .withIndex("by_eventId", (q) => q.eq("eventId", eventId))
+      .filter((q) => q.eq(q.field("claimedByUserId"), me._id))
+      .first();
+    if (existing) {
+      return { state: "already-joined" as const, guestId: existing._id };
+    }
+
+    // Capacity check (maxCapacity 0 or undefined = unlimited).
+    if (event.maxCapacity && event.maxCapacity > 0) {
+      const total = (
+        await ctx.db
+          .query("guests")
+          .withIndex("by_eventId", (q) => q.eq("eventId", eventId))
+          .collect()
+      ).length;
+      if (total >= event.maxCapacity) {
+        throw new Error("This event is at capacity");
+      }
+    }
+
+    const now = Date.now();
+    const guestId = await ctx.db.insert("guests", {
+      eventId,
+      name: me.name || me.username || "ivari guest",
+      email: me.email,
+      phone: undefined,
+      portalToken: undefined,
+      notificationStatus: "skipped",
+      checkedIn: "0",
+      claimedByUserId: me._id,
+      claimedAt: now,
+      updatedAt: now,
+    });
+
+    return { state: "joined" as const, guestId };
+  },
+});
+
 /** Public — used by the guest portal page. Returns only guest-safe fields. */
 export const getBySlug = query({
   args: { slug: v.string() },
@@ -343,6 +474,8 @@ export const create = mutation({
     themeColor: v.optional(v.string()),
     themeColorSecondary: v.optional(v.string()),
     language: v.optional(v.string()),
+    /** Make this event publicly discoverable in Home search. Defaults false. */
+    isPublic: v.optional(v.boolean()),
   },
   handler: async (ctx, input) => {
     const user = await requireUser(ctx);
@@ -377,6 +510,7 @@ export const create = mutation({
       themeColor: input.themeColor,
       themeColorSecondary: input.themeColorSecondary,
       language: input.language,
+      isPublic: input.isPublic ?? false,
       guestTokenSalt,
       status: input.status || "active",
       memoryWallEnabled: "1",
@@ -427,6 +561,8 @@ export const update = mutation({
     themeColor: v.optional(v.union(v.string(), v.null())),
     themeColorSecondary: v.optional(v.union(v.string(), v.null())),
     language: v.optional(v.union(v.string(), v.null())),
+    /** Toggle public discoverability. */
+    isPublic: v.optional(v.boolean()),
   },
   handler: async (ctx, { id, ...rest }) => {
     const user = await requireUser(ctx);

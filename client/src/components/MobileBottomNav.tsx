@@ -167,6 +167,7 @@ export default function MobileBottomNav() {
                   key={tab.key}
                   type="button"
                   aria-label={tab.label}
+                  data-tour={`bottom-${tab.key}`}
                   onClick={() => handleTabPress(tab)}
                   style={{
                     marginTop: -18,
@@ -197,6 +198,7 @@ export default function MobileBottomNav() {
                 type="button"
                 aria-label={tab.label}
                 aria-current={isActive ? "page" : undefined}
+                data-tour={`bottom-${tab.key}`}
                 onClick={() => handleTabPress(tab)}
                 style={{
                   position: "relative",
@@ -367,18 +369,35 @@ export default function MobileBottomNav() {
               </button>
             )}
 
-            {/* Settings (placeholder — no route yet) */}
+            {/* Profile — username, tagline, friends */}
             <button
               type="button"
               onClick={() => {
                 haptic();
                 setDrawerOpen(false);
+                navigate("/profile");
+              }}
+              style={drawerRowStyle}
+            >
+              <span style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <User size={18} />
+                <span>Profile &amp; friends</span>
+              </span>
+            </button>
+
+            {/* Account & security — Stack handler */}
+            <button
+              type="button"
+              onClick={() => {
+                haptic();
+                setDrawerOpen(false);
+                navigate("/handler/account-settings");
               }}
               style={drawerRowStyle}
             >
               <span style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 <Settings size={18} />
-                <span>Settings</span>
+                <span>Account settings</span>
               </span>
             </button>
 

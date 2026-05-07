@@ -19,6 +19,7 @@ const MemoryWall = lazy(() => import("./pages/MemoryWall"));
 const Gallery = lazy(() => import("./pages/Gallery"));
 const Chats = lazy(() => import("./pages/Chats"));
 const CheckIn = lazy(() => import("./pages/CheckIn"));
+const Profile = lazy(() => import("./pages/Profile"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 /**
@@ -71,6 +72,7 @@ function Router() {
         <Route path="/memory/:slug" component={MemoryWall} />
         <Route path="/chats/:slug" component={Chats} />
         <Route path="/gallery" component={Gallery} />
+        <Route path="/profile" component={Profile} />
         {/* Stack Auth pre-built UI — sign-in, sign-up, sign-out, OAuth callbacks */}
         <Route path="/handler/:rest*" component={StackAuthHandler} />
         <Route path="/404" component={NotFound} />

@@ -28,11 +28,41 @@ export default defineSchema({
     email: v.optional(v.string()),
     loginMethod: v.optional(v.string()),
     role: v.union(v.literal("user"), v.literal("admin")),
+    /** Public handle shown on Memory Wall posts and friend search.
+     *  Distinct from `name` (legal/display name from Stack Auth profile);
+     *  this is what appears next to user-generated content. */
+    username: v.optional(v.string()),
+    /** Avatar image URL — sourced from Stack Auth profile on bootstrap and
+     *  refreshed on every sign-in. Memory Wall posts denormalize this
+     *  into the photo row at upload time so old posts don't change face. */
+    avatarUrl: v.optional(v.string()),
+    /** Optional one-line tagline / bio surfaced on the user's profile. */
+    tagline: v.optional(v.string()),
     updatedAt: v.number(),
     lastSignedIn: v.number(),
   })
     .index("by_tokenIdentifier", ["tokenIdentifier"])
-    .index("by_email", ["email"]),
+    .index("by_email", ["email"])
+    .index("by_username", ["username"]),
+
+  // ───────────────────────────────────────────────────────────────────────
+  // friends — bidirectional friend graph. Two rows per accepted pair (one
+  // owned by each user) so list/queries are O(N) by indexed `ownerId`.
+  // `status: "pending"` = inbound request from `friendUserId`. The accept
+  // mutation flips both rows to "accepted".
+  // ───────────────────────────────────────────────────────────────────────
+  friends: defineTable({
+    ownerId: v.id("users"),
+    friendUserId: v.id("users"),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("accepted"),
+      v.literal("blocked"),
+    ),
+    createdAt: v.number(),
+  })
+    .index("by_ownerId", ["ownerId"])
+    .index("by_pair", ["ownerId", "friendUserId"]),
 
   // ───────────────────────────────────────────────────────────────────────
   // events — the core entity. Host-uploaded cover image, location, scheduling.
@@ -87,6 +117,11 @@ export default defineSchema({
     themeColorSecondary: v.optional(v.string()),
     /** Portal language code (e.g. en, es, fr, de, it, pt, ja, zh, ko, ar) */
     language: v.optional(v.string()),
+    /** Whether this event is publicly discoverable. When `true`, the event
+     *  surfaces in the Home search box for any signed-in user; they can
+     *  one-tap join via `events.joinPublicEvent`. Defaults to false (existing
+     *  events stay private — invitation-only). */
+    isPublic: v.optional(v.boolean()),
     /**
      * V10 seating chart — host-defined table layout for the event. Each
      * entry has a stable string id (referenced by guests.tableNumber) plus
@@ -113,7 +148,13 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_slug", ["slug"])
-    .index("by_hostId", ["hostId"]),
+    .index("by_hostId", ["hostId"])
+    // Public-event discovery — Convex full-text search on title, filtered
+    // to public + active so the index doesn't surface drafts or cancelled.
+    .searchIndex("search_title_public", {
+      searchField: "title",
+      filterFields: ["isPublic", "status"],
+    }),
 
   // ───────────────────────────────────────────────────────────────────────
   // rsvps — guest responses to event invitations.
@@ -153,6 +194,14 @@ export default defineSchema({
   photos: defineTable({
     eventId: v.id("events"),
     uploaderName: v.optional(v.string()),
+    /** Optional Stack-auth user ID of the uploader. Set when a signed-in
+     *  ivari user posts (host or claimed guest); null for token-only guest
+     *  uploads. Lets the Memory Wall render the user's avatar/username. */
+    uploaderUserId: v.optional(v.id("users")),
+    /** Snapshot of the uploader's avatar URL at upload time. Denormalized
+     *  so old posts stay visually stable even if the user changes their
+     *  Stack profile photo later. */
+    uploaderAvatarUrl: v.optional(v.string()),
     imageUrl: v.string(),
     fileKey: v.optional(v.string()),
     caption: v.optional(v.string()),
@@ -321,6 +370,24 @@ export default defineSchema({
   })
     .index("by_eventId", ["eventId"])
     .index("by_eventId_visitorHash", ["eventId", "visitorHash"]),
+
+  // ───────────────────────────────────────────────────────────────────────
+  // pushSubscriptions — Web Push subscriptions per user. One row per
+  // device/browser; the same Stack user signed in on three devices has
+  // three rows. `endpoint` is unique (it's the canonical subscription id
+  // returned by the browser's PushManager).
+  // ───────────────────────────────────────────────────────────────────────
+  pushSubscriptions: defineTable({
+    userId: v.id("users"),
+    endpoint: v.string(),
+    p256dh: v.string(),
+    auth: v.string(),
+    /** Optional device hint for surfacing in account settings. */
+    userAgent: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_endpoint", ["endpoint"]),
 
   // ───────────────────────────────────────────────────────────────────────
   // weatherCache — cached Open-Meteo forecast slices keyed by lat/lon/date.

@@ -86,6 +86,13 @@ export default function LiveEvent() {
     slug ? { slug } : "skip",
   );
 
+  // Avatar bubbles — claimed/checked-in attendees with avatars + first names.
+  // Public-safe surface (this whole page is /live/:slug, no auth required).
+  const liveAttendees = useQuery(
+    api.guests.liveAttendees,
+    eventId ? { eventId } : "skip",
+  );
+
   // Upload pipeline — guest path only (this surface is for attendees, not hosts).
   const requestUploadUrl = useAction(api.photos.requestUploadUrl);
   const savePhotoRecord = useAction(api.photos.savePhotoRecord);
@@ -291,6 +298,43 @@ export default function LiveEvent() {
           </GlassCard>
         </div>
       </div>
+
+      {/* Avatar bubble row — claimed/checked-in attendees stream live. */}
+      {liveAttendees && liveAttendees.length > 0 && (
+        <div className="relative z-10 px-4 sm:px-6 pt-3">
+          <div className="max-w-5xl mx-auto">
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {liveAttendees.map((a) => (
+                <div
+                  key={a._id}
+                  className="flex flex-col items-center gap-1 flex-shrink-0"
+                  title={`${a.name}${a.checkedIn ? " · here" : ""}${a.hasIvariAccount ? " · ivari" : ""}`}
+                >
+                  <div className="relative">
+                    {a.avatarUrl ? (
+                      <img
+                        src={a.avatarUrl}
+                        alt=""
+                        className={`w-10 h-10 rounded-full object-cover border-2 ${a.checkedIn ? "border-[oklch(0.78_0.13_60)]" : "border-[oklch(1_0_0/12%)]"}`}
+                      />
+                    ) : (
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold border-2 ${a.checkedIn ? "border-[oklch(0.78_0.13_60)] bg-[oklch(0.78_0.13_60/16%)] text-[oklch(0.78_0.13_60)]" : "border-[oklch(1_0_0/12%)] bg-[oklch(1_0_0/6%)]"}`}>
+                        {(a.name ?? "?").slice(0, 1).toUpperCase()}
+                      </div>
+                    )}
+                    {a.checkedIn && (
+                      <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-[oklch(0.78_0.13_60)] border-2 border-[oklch(0.06_0.025_275)]" />
+                    )}
+                  </div>
+                  <span className="text-[10px] text-[oklch(0.55_0.02_60)] max-w-[60px] truncate">
+                    {a.name?.split(" ")[0]}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Pending-review hint (local-only — counts this device's uploads). */}
       <AnimatePresence>

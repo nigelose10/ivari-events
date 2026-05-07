@@ -54,11 +54,29 @@ export const list = query({
   handler: async (ctx, { eventId }) => {
     const user = await requireUser(ctx);
     await requireOwnedEvent(ctx, eventId, user._id);
-    return ctx.db
+    const rows = await ctx.db
       .query("guests")
       .withIndex("by_eventId", (q) => q.eq("eventId", eventId))
       .order("desc")
       .collect();
+
+    // Enrich each row with the claimer's public profile fields so the host's
+    // guest list can show an "ivari account ✓" indicator alongside name/email.
+    // Cheap (one .get per claimed row, skipped otherwise).
+    return Promise.all(
+      rows.map(async (g) => {
+        if (!g.claimedByUserId) return { ...g, hasIvariAccount: false as const };
+        const claimer = await ctx.db.get(g.claimedByUserId);
+        if (!claimer) return { ...g, hasIvariAccount: false as const };
+        return {
+          ...g,
+          hasIvariAccount: true as const,
+          claimerUsername: claimer.username,
+          claimerName: claimer.name,
+          claimerAvatarUrl: claimer.avatarUrl,
+        };
+      }),
+    );
   },
 });
 
@@ -152,6 +170,59 @@ export const bulkImport = mutation({
   },
 });
 
+/**
+ * Public-safe attendee bubbles for the LiveEvent surface — returns claimed
+ * guests (those with an ivari account) and their avatar/name. Limited to 24
+ * rows so the UI never paints a wall of bubbles. No JWT required: this is
+ * intentionally guest-readable since LiveEvent is `/live/:slug` (public).
+ *
+ * Privacy: only emits avatar + first name. Email, phone, table assignment
+ * stay on the host-only `list` query.
+ */
+export const liveAttendees = query({
+  args: { eventId: v.id("events") },
+  handler: async (ctx, { eventId }) => {
+    const rows = await ctx.db
+      .query("guests")
+      .withIndex("by_eventId", (q) => q.eq("eventId", eventId))
+      .collect();
+
+    // Prefer checked-in first, then any claimed, then anonymous fallback.
+    const ranked = rows
+      .map((g) => ({
+        guest: g,
+        score:
+          (g.checkedIn === "1" ? 2 : 0) + (g.claimedByUserId ? 1 : 0),
+      }))
+      .filter((r) => r.score > 0 || r.guest.checkedIn === "1")
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 24);
+
+    return Promise.all(
+      ranked.map(async ({ guest }) => {
+        let avatarUrl: string | undefined;
+        let displayName = guest.name;
+        if (guest.claimedByUserId) {
+          const u = await ctx.db.get(guest.claimedByUserId);
+          if (u) {
+            avatarUrl = u.avatarUrl;
+            // Use the user's name only if it's set — otherwise keep the
+            // guest-row name (which is the host-typed display name).
+            if (u.name) displayName = u.name;
+          }
+        }
+        return {
+          _id: guest._id,
+          name: displayName,
+          checkedIn: guest.checkedIn === "1",
+          hasIvariAccount: !!guest.claimedByUserId,
+          avatarUrl,
+        };
+      }),
+    );
+  },
+});
+
 /** Add a single guest. */
 export const add = mutation({
   args: {
@@ -180,6 +251,109 @@ export const add = mutation({
     });
     const guest = await ctx.db.get(id);
     return { guest };
+  },
+});
+
+/**
+ * Bulk-invite ivari friends as guests on the event. The host picks people
+ * from their friends list; we insert one guest row per friend and pre-link
+ * `claimedByUserId` so each friend's account immediately sees the event in
+ * their "I'm Attending" list — no QR claim flow needed for in-network guests.
+ *
+ * Idempotent per-friend: if the friend already has a claimed row on this
+ * event, we skip them (returned in `skipped[]`). Existing unclaimed rows by
+ * the same email are linked to the friend rather than duplicated.
+ */
+export const addFromFriends = mutation({
+  args: {
+    eventId: v.id("events"),
+    friendUserIds: v.array(v.id("users")),
+  },
+  handler: async (ctx, { eventId, friendUserIds }) => {
+    const user = await requireUser(ctx);
+    await requireOwnedEvent(ctx, eventId, user._id);
+
+    if (friendUserIds.length === 0) {
+      return { added: 0, skipped: [] as Id<"users">[] };
+    }
+    if (friendUserIds.length > 100) {
+      throw new Error("Too many friends in one batch (max 100)");
+    }
+
+    // Verify each ID is actually a friend — defense against the client
+    // tampering with the request to invite arbitrary users.
+    const friendRows = await ctx.db
+      .query("friends")
+      .withIndex("by_ownerId", (q) => q.eq("ownerId", user._id))
+      .collect();
+    const acceptedIds = new Set(
+      friendRows.filter((r) => r.status === "accepted").map((r) => r.friendUserId),
+    );
+
+    let added = 0;
+    const skipped: Id<"users">[] = [];
+    const now = Date.now();
+
+    for (const friendId of friendUserIds) {
+      if (!acceptedIds.has(friendId)) {
+        skipped.push(friendId);
+        continue;
+      }
+
+      // Skip if already a claimed guest on this event.
+      const existingClaimed = await ctx.db
+        .query("guests")
+        .withIndex("by_eventId", (q) => q.eq("eventId", eventId))
+        .filter((q) => q.eq(q.field("claimedByUserId"), friendId))
+        .first();
+      if (existingClaimed) {
+        skipped.push(friendId);
+        continue;
+      }
+
+      const friend = await ctx.db.get(friendId);
+      if (!friend) {
+        skipped.push(friendId);
+        continue;
+      }
+
+      // If an unclaimed guest row exists with the friend's email, link it
+      // rather than inserting a duplicate.
+      let linked = false;
+      if (friend.email) {
+        const sameEmail = await ctx.db
+          .query("guests")
+          .withIndex("by_eventId", (q) => q.eq("eventId", eventId))
+          .filter((q) => q.eq(q.field("email"), friend.email))
+          .first();
+        if (sameEmail && !sameEmail.claimedByUserId) {
+          await ctx.db.patch(sameEmail._id, {
+            claimedByUserId: friend._id,
+            claimedAt: now,
+            updatedAt: now,
+          });
+          linked = true;
+        }
+      }
+
+      if (!linked) {
+        await ctx.db.insert("guests", {
+          eventId,
+          name: friend.name || friend.username || "ivari friend",
+          email: friend.email,
+          phone: undefined,
+          portalToken: undefined,
+          notificationStatus: "pending",
+          checkedIn: "0",
+          claimedByUserId: friend._id,
+          claimedAt: now,
+          updatedAt: now,
+        });
+      }
+      added += 1;
+    }
+
+    return { added, skipped };
   },
 });
 

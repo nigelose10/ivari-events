@@ -15,7 +15,7 @@
  */
 import { useState, useRef, useCallback, useMemo } from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { GlassCard } from "@/components/GlassCard";
 import { LiquidButton } from "@/components/LiquidButton";
@@ -84,6 +84,8 @@ export default function Forge() {
   // Form state
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [aiBusy, setAiBusy] = useState(false);
+  const generateEventCopy = useAction(api.ai.generateEventCopy);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [imagePrompt, setImagePrompt] = useState("");
   const [eventDate, setEventDate] = useState("");
@@ -93,6 +95,7 @@ export default function Forge() {
   const [locationLng, setLocationLng] = useState("");
   const [locationPlaceId, setLocationPlaceId] = useState("");
   const [maxCapacity, setMaxCapacity] = useState(0);
+  const [isPublic, setIsPublic] = useState(false);
   const [rsvpDeadlineDate, setRsvpDeadlineDate] = useState("");
   const [rsvpDeadlineTime, setRsvpDeadlineTime] = useState("");
   const [surveyQuestions, setSurveyQuestions] = useState<SurveyQuestion[]>([]);
@@ -231,6 +234,7 @@ export default function Forge() {
           templateId: selectedTemplateId || undefined,
           themeColor: themeColor || undefined,
           language: language || undefined,
+          isPublic: isPublic || undefined,
         });
         toast.success("Event launched!");
         // Convex returns the new event id; route to /pulse/:slug if available, else /pulse/:id
@@ -242,7 +246,7 @@ export default function Forge() {
         setIsCreating(false);
       }
     })();
-  }, [title, description, imageUrl, imagePrompt, eventDate, eventTime, locationName, locationLat, locationLng, locationPlaceId, maxCapacity, rsvpDeadlineDate, rsvpDeadlineTime, surveyQuestions, createEvent, selectedTemplateId, themeColor, language, navigate]);
+  }, [title, description, imageUrl, imagePrompt, eventDate, eventTime, locationName, locationLat, locationLng, locationPlaceId, maxCapacity, isPublic, rsvpDeadlineDate, rsvpDeadlineTime, surveyQuestions, createEvent, selectedTemplateId, themeColor, language, navigate]);
 
   const addPresetQuestion = (preset: SurveyQuestion) => {
     if (surveyQuestions.find(q => q.id === preset.id)) { toast.error("Already added"); return; }
@@ -435,6 +439,32 @@ export default function Forge() {
                         className="w-full bg-transparent text-base text-warm-muted placeholder:text-[oklch(0.3_0.01_75)] outline-none resize-none min-h-[60px] leading-relaxed font-light"
                         rows={2}
                       />
+                      <div className="flex justify-end mt-2">
+                        <button
+                          type="button"
+                          disabled={!title.trim() || aiBusy}
+                          onClick={async () => {
+                            if (!title.trim()) return;
+                            setAiBusy(true);
+                            try {
+                              const res = await generateEventCopy({ title: title.trim() });
+                              if (res?.text) {
+                                setDescription((prev) => prev ? `${prev}\n\n${res.text}` : res.text);
+                                toast.success("Description drafted by Gemma 4");
+                              }
+                            } catch (err: any) {
+                              toast.error(err?.message ?? "AI draft failed");
+                            } finally {
+                              setAiBusy(false);
+                            }
+                          }}
+                          className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-warm-muted hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                          title={title.trim() ? "Draft a description with Gemma 4" : "Add a title first"}
+                        >
+                          <Wand2 className="w-3.5 h-3.5" />
+                          {aiBusy ? "Drafting…" : "Draft with AI"}
+                        </button>
+                      </div>
                     </div>
                   </GlassCard>
 
@@ -623,6 +653,34 @@ export default function Forge() {
                       <input type="time" value={rsvpDeadlineTime} onChange={(e) => setRsvpDeadlineTime(e.target.value)} className="glass-input [color-scheme:dark]" />
                     </div>
                   </div>
+
+                  {/* Public discoverability toggle. When on, the event surfaces
+                      in Home's "Find an event" search for any signed-in ivari
+                      user — they can join with one tap (no QR claim needed). */}
+                  <button
+                    type="button"
+                    onClick={() => setIsPublic((v) => !v)}
+                    className={`w-full flex items-start gap-3 p-3.5 rounded-xl border text-left transition-colors ${
+                      isPublic
+                        ? "bg-[oklch(0.75_0.15_55/12%)] border-[oklch(0.75_0.15_55/40%)]"
+                        : "bg-[oklch(1_0_0/3%)] border-[oklch(1_0_0/8%)] hover:bg-[oklch(1_0_0/5%)]"
+                    }`}
+                  >
+                    <div
+                      className={`mt-0.5 w-5 h-5 rounded-md border flex-shrink-0 flex items-center justify-center ${
+                        isPublic ? "bg-[oklch(0.75_0.15_55)] border-[oklch(0.75_0.15_55)]" : "border-[oklch(1_0_0/20%)]"
+                      }`}
+                    >
+                      {isPublic && <Check className="w-3.5 h-3.5 text-white" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium">Make this event public</div>
+                      <div className="text-xs text-warm-muted mt-0.5">
+                        Anyone on ivari can find it by typing the title and join with one tap.
+                        Off by default — invitation-only.
+                      </div>
+                    </div>
+                  </button>
                 </GlassCard>
 
                 {/* Language Selector */}
