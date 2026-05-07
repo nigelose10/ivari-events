@@ -204,6 +204,7 @@ export default function Pulse() {
   const addGuestFn = useMutation(api.guests.add);
   const addFromFriendsFn = useMutation(api.guests.addFromFriends);
   const removeGuestFn = useMutation(api.guests.remove);
+  const updateGuestFn = useMutation(api.guests.update);
   const friendsList = useQuery(api.friends.list, {}) ?? [];
   const transitionStatus = useMutation(api.events.transitionStatus);
   const duplicateEvent = useMutation(api.events.duplicate);
@@ -1414,7 +1415,18 @@ export default function Pulse() {
                                 </span>
                               )}
                             </div>
-                            <div className="flex items-center gap-3 text-xs text-[oklch(0.45_0.02_265)]">
+                            <div className="flex items-center gap-3 text-xs text-[oklch(0.45_0.02_265)] flex-wrap">
+                              {guest.tableNumber && (
+                                <span className="inline-flex items-center gap-1 text-[oklch(0.7_0.15_55)] font-medium">
+                                  Table {guest.tableNumber}
+                                  {guest.seatNumber ? ` · Seat ${guest.seatNumber}` : ""}
+                                </span>
+                              )}
+                              {guest.tier && (
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-[oklch(0.7_0.15_220/14%)] text-[oklch(0.7_0.15_220)] font-semibold text-[10px] uppercase tracking-[0.08em]">
+                                  {guest.tier}
+                                </span>
+                              )}
                               {guest.claimerUsername && <span className="text-[oklch(0.7_0.15_220)]">@{guest.claimerUsername}</span>}
                               {guest.email && <span className="flex items-center gap-1"><Mail className="w-3 h-3" />{guest.email}</span>}
                               {guest.phone && <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{guest.phone}</span>}
@@ -1422,6 +1434,27 @@ export default function Pulse() {
                           </div>
                           <div className="flex items-center gap-2">
                             {statusIcon(guest.notificationStatus)}
+                            <button
+                              onClick={() => {
+                                const next = window.prompt(
+                                  `Tier for ${guest.name}?\n\nFree-form: VIP, Family, Speaker, etc. Leave blank to clear.`,
+                                  guest.tier ?? "",
+                                );
+                                if (next === null) return;
+                                const trimmed = next.trim();
+                                updateGuestFn({
+                                  guestId: guest.id as Id<"guests">,
+                                  eventId,
+                                  tier: trimmed.length ? trimmed : undefined,
+                                })
+                                  .then(() => toast.success("Tier updated"))
+                                  .catch((err: any) => toast.error(err?.message ?? "Failed"));
+                              }}
+                              className="p-1.5 rounded-lg hover:bg-[oklch(1_0_0/8%)] text-[oklch(0.5_0.02_265)] hover:text-foreground transition-colors opacity-0 group-hover:opacity-100"
+                              title="Set guest tier (VIP, Family, etc.)"
+                            >
+                              <BadgeCheck className="w-3.5 h-3.5" />
+                            </button>
                             <button onClick={() => handleCopyGuestLink(guest.id)} className="p-1.5 rounded-lg hover:bg-[oklch(1_0_0/8%)] text-[oklch(0.5_0.02_265)] hover:text-foreground transition-colors opacity-0 group-hover:opacity-100" title="Copy portal link">
                               {copiedGuestId === guest.id ? <Check className="w-3.5 h-3.5" /> : <Link2 className="w-3.5 h-3.5" />}
                             </button>

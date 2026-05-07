@@ -595,8 +595,11 @@ export const dra50 = mutation({
       });
       event = await ctx.db.get(id);
     } else {
-      // Idempotent re-config: ensure the event is public + name-list.
+      // Idempotent re-config: ensure the event is public + name-list AND
+      // owned by the resolved host (a previous seed run may have assigned
+      // it to a stale "first user").
       await ctx.db.patch(event._id, {
+        hostId: host._id,
         isPublic: true,
         claimMode: "name-list",
         memoryWallEnabled: "1",

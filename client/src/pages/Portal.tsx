@@ -38,7 +38,7 @@ import { hasSeenReveal, markRevealSeen } from "@/lib/envelopeReveal";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Calendar, MapPin, Users, Check, Heart, X, HelpCircle,
-  ChevronDown, Image as ImageIcon, Sparkles,
+  ChevronDown, ChevronLeft, Image as ImageIcon, Sparkles, Camera,
 } from "lucide-react";
 import { useParams, useLocation } from "wouter";
 import { toast } from "sonner";
@@ -341,7 +341,18 @@ export default function Portal() {
 
   const handleSubmit = useCallback(() => {
     if (!guestName.trim()) { toast.error("Please enter your name"); return; }
-    if (!token) { toast.error("Invalid invitation link"); return; }
+    // For name-list / device-claimed users there's no token but the claim
+    // step already inserted an attending RSVP server-side. The Accept
+    // button just nudges them home — no submitWithToken roundtrip needed.
+    if (!token) {
+      if (nameClaim) {
+        toast.success("You're attending — see you there.");
+        window.setTimeout(() => navigate("/"), 600);
+        return;
+      }
+      toast.error("Open this from your invitation link to RSVP.");
+      return;
+    }
 
     // V11 — sign-in gate on "Attending". If the guest is on a per-guest link
     // (gt= present) but not signed in, route to Stack Auth's sign-in page
@@ -375,7 +386,7 @@ export default function Portal() {
       message: message.trim() || undefined,
       surveyResponses: Object.keys(surveyAnswers).length > 0 ? surveyAnswers : undefined,
     });
-  }, [token, guestName, guestEmail, status, plusOnes, message, surveyAnswers, submitMutation, resolvedGuestId, authLoading, isAuthenticated]);
+  }, [token, guestName, guestEmail, status, plusOnes, message, surveyAnswers, submitMutation, resolvedGuestId, authLoading, isAuthenticated, nameClaim, navigate]);
 
   // ─── Loading ───
   if (eventQuery.isLoading) {
@@ -553,19 +564,93 @@ export default function Portal() {
                 seatNumber: claim.seatNumber,
               });
               if (!guestName) setGuestName(claim.name);
+              // Show a celebratory toast and redirect to Home where the
+              // event will appear in "I'm Attending" — for both signed-in
+              // and anon (deviceKey-claimed) visitors. Adds a tiny delay
+              // so the user sees confirmation before the route swap.
+              const seatLine = claim.tableNumber
+                ? `You're at Table ${claim.tableNumber}${claim.seatNumber ? `, Seat ${claim.seatNumber}` : ""}`
+                : "You're on the list";
+              toast.success(seatLine);
+              window.setTimeout(() => navigate("/"), 900);
             }}
           />
         </div>
       )}
 
+      {/* Already-claimed minimalist view — shown when a name-list visitor
+          revisits their portal link after claiming. No RSVP form, no
+          envelope reveal noise — just their seat, the event, and an
+          unlock to memory wall. Instagram-worthy chic. */}
+      {showMainContent && isNameListMode && nameClaim && eventData && (
+        <div className="relative z-20 min-h-[100dvh] flex flex-col items-center px-6 pt-20 pb-32 gap-8">
+          <button
+            onClick={() => navigate("/")}
+            className="self-start flex items-center gap-2 text-[oklch(0.5_0.02_265)] hover:text-foreground transition-colors text-sm font-medium"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            Home
+          </button>
+
+          <div className="text-center max-w-md">
+            <p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-[oklch(0.5_0.02_265)] mb-3">
+              You're attending
+            </p>
+            <h1 className="text-4xl sm:text-5xl font-semibold tracking-[-0.035em] leading-[1.05] mb-3">
+              {eventData.title}
+            </h1>
+            {typeof eventData.eventDate === "number" && (
+              <p className="text-sm text-[oklch(0.6_0.02_265)] mb-1">
+                {new Date(eventData.eventDate).toLocaleDateString(undefined, {
+                  weekday: "long",
+                  month: "long",
+                  day: "numeric",
+                })}
+              </p>
+            )}
+            {eventData.locationName && (
+              <p className="text-sm text-[oklch(0.5_0.02_265)]">{eventData.locationName}</p>
+            )}
+          </div>
+
+          <GlassCard variant="elevated" className="p-7 sm:p-9 text-center max-w-md w-full">
+            <p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-[oklch(0.5_0.02_265)] mb-3">
+              Your seat
+            </p>
+            <p className="text-2xl font-semibold tracking-[-0.01em]">
+              {nameClaim.name}
+            </p>
+            <div className="mt-5 pt-5 border-t border-[oklch(1_0_0/8%)]">
+              <p className="text-[11px] tracking-[0.12em] uppercase text-[oklch(0.5_0.02_265)] mb-1">Table</p>
+              <p className="text-3xl font-semibold tracking-[-0.02em]">
+                {nameClaim.tableNumber || "TBD"}
+                {nameClaim.seatNumber ? <span className="text-[oklch(0.5_0.02_265)] text-base font-normal ml-3">Seat {nameClaim.seatNumber}</span> : null}
+              </p>
+            </div>
+          </GlassCard>
+
+          {eventData.memoryWallEnabled && (
+            <button
+              onClick={() => navigate(`/memory/${slug}`)}
+              className="text-sm font-medium text-[oklch(0.78_0.13_60)] hover:text-[oklch(0.85_0.15_60)] transition-colors flex items-center gap-2"
+            >
+              Open the Memory Wall
+              <Camera className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Main content — hidden until reveal completes so the curtain pulls
-          back onto a clean composition, not a half-mounted hero. */}
+          back onto a clean composition, not a half-mounted hero. Also
+          hidden in name-list claimed state — the minimal card above
+          replaces it. */}
       <div
         style={{
-          opacity: showMainContent && !needsNameClaim ? 1 : 0,
+          opacity: showMainContent && !needsNameClaim && !(isNameListMode && nameClaim) ? 1 : 0,
           transition: "opacity 600ms cubic-bezier(0.22, 1, 0.36, 1)",
-          pointerEvents: showMainContent && !needsNameClaim ? "auto" : "none",
-          display: needsNameClaim ? "none" : "block",
+          pointerEvents: showMainContent && !needsNameClaim && !(isNameListMode && nameClaim) ? "auto" : "none",
+          display: needsNameClaim || (isNameListMode && nameClaim) ? "none" : "block",
         }}
       >
 

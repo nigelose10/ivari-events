@@ -379,6 +379,10 @@ export const update = mutation({
     ),
     notificationSentAt: v.optional(v.number()),
     notificationError: v.optional(v.string()),
+    /** Host-controlled guest tier (free-form vocabulary, e.g. VIP, Family). */
+    tier: v.optional(v.string()),
+    tableNumber: v.optional(v.string()),
+    seatNumber: v.optional(v.string()),
   },
   handler: async (ctx, { guestId, eventId, ...rest }) => {
     const user = await requireUser(ctx);

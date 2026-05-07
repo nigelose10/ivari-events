@@ -39,6 +39,7 @@ import { toast } from "sonner";
 import { runHomeTour } from "@/lib/onboarding";
 import EventDiscovery from "@/components/EventDiscovery";
 import { Skeleton } from "boneyard-js/react";
+import { getDeviceKey } from "@/lib/deviceKey";
 
 const t = { duration: 0.7, ease: [0.22, 1, 0.36, 1] as const };
 
@@ -87,12 +88,13 @@ export default function Home() {
     isLoading: isAuthenticated && eventsRaw === undefined,
   };
 
-  // V11 — "I'm Attending" — events the signed-in user has claimed via a
-  // per-guest invitation link. Distinct from the host events list above.
-  const claimedEventsRaw = useQuery(
-    api.events.myClaimedEvents,
-    isAuthenticated ? {} : "skip",
-  );
+  // V11 — "I'm Attending" — events the user (or this device) has claimed.
+  // Pass the deviceKey too so anon name-list claims also surface here, no
+  // sign-in required.
+  const deviceKey = useMemo(() => getDeviceKey(), []);
+  const claimedEventsRaw = useQuery(api.events.myClaimedEvents, {
+    deviceKey: deviceKey || undefined,
+  });
   const claimedEvents = useMemo(
     () => (claimedEventsRaw ?? []).map((e: any) => ({ ...e, id: e._id })),
     [claimedEventsRaw],

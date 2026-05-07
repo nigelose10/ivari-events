@@ -262,32 +262,55 @@ export const isHostBySlug = query({
  * the user is signed-out (the section just collapses).
  */
 export const myClaimedEvents = query({
-  args: {},
-  handler: async (ctx) => {
+  args: {
+    /** Optional anon device key. When passed and the caller isn't signed in,
+     *  we surface events the device claimed via the name-list flow so anon
+     *  visitors see "I'm Attending" populated too. */
+    deviceKey: v.optional(v.string()),
+  },
+  handler: async (ctx, { deviceKey }) => {
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) return [];
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_tokenIdentifier", (q) =>
-        q.eq("tokenIdentifier", identity.tokenIdentifier),
-      )
-      .unique();
-    if (!user) return [];
+    let user: Doc<"users"> | null = null;
+    if (identity) {
+      user = await ctx.db
+        .query("users")
+        .withIndex("by_tokenIdentifier", (q) =>
+          q.eq("tokenIdentifier", identity.tokenIdentifier),
+        )
+        .unique();
+    }
 
-    const claimedGuests = await ctx.db
-      .query("guests")
-      .withIndex("by_claimedByUserId", (q) =>
-        q.eq("claimedByUserId", user._id),
-      )
-      .collect();
+    // Pull both account-claimed and device-claimed guest rows.
+    const claimedByUser = user
+      ? await ctx.db
+          .query("guests")
+          .withIndex("by_claimedByUserId", (q) =>
+            q.eq("claimedByUserId", user!._id),
+          )
+          .collect()
+      : [];
+    const claimedByDevice = deviceKey
+      ? await ctx.db
+          .query("guests")
+          .withIndex("by_claimedByDeviceKey", (q) =>
+            q.eq("claimedByDeviceKey", deviceKey),
+          )
+          .collect()
+      : [];
+
+    // Dedupe (a row claimed by both user + device — e.g. user signed in
+    // after an anon claim — should appear once).
+    const byId = new Map<Id<"guests">, Doc<"guests">>();
+    for (const g of claimedByUser) byId.set(g._id, g);
+    for (const g of claimedByDevice) byId.set(g._id, g);
 
     const enriched = await Promise.all(
-      claimedGuests.map(async (g) => {
+      Array.from(byId.values()).map(async (g) => {
         const event = await ctx.db.get(g.eventId);
         if (!event) return null;
-        // Skip events the user actually hosts — those already show in the
-        // host "Events" list and don't belong in "I'm Attending".
-        if (event.hostId === user._id) return null;
+        // Hosts of an event don't see it in their "I'm Attending" list —
+        // it already lives in the host events column.
+        if (user && event.hostId === user._id) return null;
         const resolved = await withResolvedImage(ctx, event);
         return {
           ...resolved,
@@ -326,13 +349,12 @@ export const searchPublic = query({
       )
       .take(10);
 
+    // Privacy: deliberately do NOT return guestCount on public search hits
+    // — the size of someone's invite list is the host's business, not the
+    // public's. The host sees real counts in Pulse.
     return Promise.all(
       hits.map(async (e) => {
         const resolved = await withResolvedImage(ctx, e);
-        const guests = await ctx.db
-          .query("guests")
-          .withIndex("by_eventId", (q) => q.eq("eventId", e._id))
-          .collect();
         return {
           _id: e._id,
           slug: e.slug,
@@ -342,7 +364,6 @@ export const searchPublic = query({
           eventDate: e.eventDate,
           locationName: e.locationName,
           themeColor: e.themeColor,
-          guestCount: guests.length,
         };
       }),
     );
@@ -551,6 +572,38 @@ export const claimByName = mutation({
       claimedAt: now,
       updatedAt: now,
     });
+
+    // Auto-RSVP as attending. The whole point of the name-list flow is
+    // that picking your name means "I'll be there" — making the user click
+    // a separate Accept after they've already confirmed identity adds
+    // friction with no signal. The host can still see RSVP counts in Pulse.
+    // Idempotent: skip if there's already an RSVP keyed by name.
+    const existingRsvp = await ctx.db
+      .query("rsvps")
+      .withIndex("by_eventId", (q) => q.eq("eventId", event._id))
+      .filter((q) => q.eq(q.field("guestName"), guest.name))
+      .first();
+    if (!existingRsvp) {
+      await ctx.db.insert("rsvps", {
+        eventId: event._id,
+        guestName: guest.name,
+        guestEmail: guest.email,
+        guestPhone: guest.phone,
+        status: "attending",
+        plusOnes: 0,
+        updatedAt: now,
+      });
+      // Link the RSVP back to the guest row for cleaner host views.
+      const justInserted = await ctx.db
+        .query("rsvps")
+        .withIndex("by_eventId", (q) => q.eq("eventId", event._id))
+        .filter((q) => q.eq(q.field("guestName"), guest.name))
+        .first();
+      if (justInserted) {
+        await ctx.db.patch(guestId, { rsvpId: justInserted._id });
+      }
+    }
+
     return {
       state: "claimed" as const,
       guestId,

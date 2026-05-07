@@ -262,6 +262,13 @@ export default defineSchema({
     dietaryNotes: v.optional(v.string()), // "Vegan, no nuts"
     hostNotes: v.optional(v.string()), // private — never returned to guests
     guestNotes: v.optional(v.string()), // shown to guest in personalized portal
+    /**
+     * Optional guest tier — host-controlled. Used for VIP routing,
+     * differential perks, seating priority, etc. Hosts pick a value from
+     * a free-form vocabulary; we don't constrain on the schema so each
+     * event can speak its own dialect ("VIP", "Family", "Speaker", etc).
+     */
+    tier: v.optional(v.string()),
     /** Stack Auth user who claimed this guest record on first sign-in via a
      *  per-guest invitation link. Once set, the event sticks to the user's
      *  profile and shows up in their "I'm Attending" list. */
