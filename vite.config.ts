@@ -168,14 +168,23 @@ const plugins = [
     },
     workbox: {
       globPatterns: ["**/*.{js,css,html,ico,png,svg,webp,woff,woff2}"],
+      // tfjs/nsfwjs ship ~5.6 MB shards — let them be fetched lazily on
+      // first NSFW preflight rather than precached. The moderation flow
+      // already tolerates a network miss (fail-open to host-moderation
+      // queue), so a slow first run is acceptable.
+      globIgnores: [
+        "**/group1-shard*.min-*.js",
+        "**/tfjs/**",
+        "**/nsfwjs/**",
+      ],
       // Inject Web Push event listeners into the generated SW.
       // The script lives in client/public/push-handlers.js and is loaded
       // from the SW scope via importScripts(). See convex/push.ts for the
       // matching server-side payload shape.
       importScripts: ["/push-handlers.js"],
-      // Bump precache size cap to 5 MiB — IVARI's main bundle is ~2.8 MB.
-      // TODO: route-level React.lazy code-splitting will get us back under default 2 MiB.
-      maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+      // Bump precache size cap to 10 MiB so the main app + AI SDK still
+      // get precached comfortably — tfjs shards are excluded above.
+      maximumFileSizeToCacheInBytes: 10 * 1024 * 1024,
       navigateFallback: "/index.html",
       navigateFallbackDenylist: [/^\/api\//, /^\/trpc\//, /^\/__manus__\//],
       cleanupOutdatedCaches: true,
