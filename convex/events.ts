@@ -411,6 +411,189 @@ export const joinPublicEvent = mutation({
   },
 });
 
+/**
+ * Name-list search for public-events with `claimMode === "name-list"`.
+ * Visitor types their name; we return up to 8 candidate guest rows from the
+ * pre-loaded list. Only safe-to-public fields come back: name + table number,
+ * never email/phone/notes.
+ *
+ * Authentication: none required. The lookup is deliberately public because the
+ * gala-style use case (DRA@50) wants attendees who arrive without a token to
+ * still be able to find themselves on the list. The match is fuzzy — uses
+ * the existing `search_name_for_event` text index, which already does
+ * tokenized prefix matching.
+ *
+ * Throws if the event isn't `claimMode: "name-list"` so we don't accidentally
+ * leak open-event guest names.
+ */
+export const searchGuestsByName = query({
+  args: { slug: v.string(), q: v.string() },
+  handler: async (ctx, { slug, q }) => {
+    const trimmed = q.trim();
+    if (trimmed.length < 2) return [];
+
+    const event = await ctx.db
+      .query("events")
+      .withIndex("by_slug", (q) => q.eq("slug", slug))
+      .unique();
+    if (!event) throw new Error("Event not found");
+    if (!event.isPublic || event.claimMode !== "name-list") {
+      throw new Error("This event isn't using name-list claim");
+    }
+
+    const hits = await ctx.db
+      .query("guests")
+      .withSearchIndex("search_name_for_event", (idx) =>
+        idx.search("name", trimmed).eq("eventId", event._id),
+      )
+      .take(8);
+
+    return hits.map((g) => ({
+      _id: g._id,
+      name: g.name,
+      tableNumber: g.tableNumber,
+      seatNumber: g.seatNumber,
+      isClaimed: !!g.claimedByUserId,
+    }));
+  },
+});
+
+/**
+ * Confirm a name-list claim. The visitor has picked one of the rows from
+ * `searchGuestsByName` and is asserting it's them.
+ *
+ * Two paths, picked at runtime:
+ *   - **Signed-in user** → persist `claimedByUserId = me._id` (durable across
+ *     devices; event shows in their "I'm Attending" list).
+ *   - **Anonymous visitor** → client supplies a `deviceKey` (random UUID
+ *     stored in localStorage). We store it on the row so subsequent visits
+ *     from the same device recognize the same guest. They can later upgrade
+ *     to a real account and we'll fold the device claim into their user.
+ *
+ * Idempotent: re-claiming a row you already own returns `already-yours`.
+ * `taken` if someone else owns it (signed-in or other device) — caller can
+ * try a different row (e.g. "X's Guest").
+ */
+export const claimByName = mutation({
+  args: {
+    slug: v.string(),
+    guestId: v.id("guests"),
+    /** Required for anon visitors. Ignored when a Stack JWT is present. */
+    deviceKey: v.optional(v.string()),
+  },
+  handler: async (ctx, { slug, guestId, deviceKey }) => {
+    const event = await ctx.db
+      .query("events")
+      .withIndex("by_slug", (q) => q.eq("slug", slug))
+      .unique();
+    if (!event) throw new Error("Event not found");
+    if (!event.isPublic || event.claimMode !== "name-list") {
+      throw new Error("This event isn't using name-list claim");
+    }
+
+    const guest = await ctx.db.get(guestId);
+    if (!guest || guest.eventId !== event._id) {
+      throw new Error("Guest not on this event's list");
+    }
+
+    // Resolve a Stack user if there is one; falls back to anon-with-deviceKey.
+    const identity = await ctx.auth.getUserIdentity();
+    let me = null;
+    if (identity) {
+      me = await ctx.db
+        .query("users")
+        .withIndex("by_tokenIdentifier", (q) =>
+          q.eq("tokenIdentifier", identity.tokenIdentifier),
+        )
+        .unique();
+    }
+
+    // Idempotent — re-claim by same owner.
+    if (me && guest.claimedByUserId === me._id) {
+      return {
+        state: "already-yours" as const,
+        guestId,
+        name: guest.name,
+        tableNumber: guest.tableNumber,
+        seatNumber: guest.seatNumber,
+      };
+    }
+    if (
+      !me &&
+      deviceKey &&
+      guest.claimedByDeviceKey === deviceKey &&
+      !guest.claimedByUserId
+    ) {
+      return {
+        state: "already-yours" as const,
+        guestId,
+        name: guest.name,
+        tableNumber: guest.tableNumber,
+        seatNumber: guest.seatNumber,
+      };
+    }
+
+    if (
+      guest.claimedByUserId ||
+      (guest.claimedByDeviceKey && guest.claimedByDeviceKey !== deviceKey)
+    ) {
+      return { state: "taken" as const };
+    }
+
+    if (!me && !deviceKey) {
+      throw new Error("deviceKey required for anonymous claim");
+    }
+
+    const now = Date.now();
+    await ctx.db.patch(guestId, {
+      claimedByUserId: me ? me._id : undefined,
+      claimedByDeviceKey: me ? undefined : deviceKey,
+      claimedAt: now,
+      updatedAt: now,
+    });
+    return {
+      state: "claimed" as const,
+      guestId,
+      name: guest.name,
+      tableNumber: guest.tableNumber,
+      seatNumber: guest.seatNumber,
+    };
+  },
+});
+
+/**
+ * Recover an anonymous claim from a device key — called on page load by the
+ * Portal so a returning visitor lands directly on their table assignment
+ * without re-typing their name. Public-safe (only name + table, never
+ * email/phone).
+ */
+export const getClaimByDeviceKey = query({
+  args: { slug: v.string(), deviceKey: v.string() },
+  handler: async (ctx, { slug, deviceKey }) => {
+    if (!deviceKey) return null;
+    const event = await ctx.db
+      .query("events")
+      .withIndex("by_slug", (q) => q.eq("slug", slug))
+      .unique();
+    if (!event) return null;
+
+    const guest = await ctx.db
+      .query("guests")
+      .withIndex("by_claimedByDeviceKey", (q) =>
+        q.eq("claimedByDeviceKey", deviceKey),
+      )
+      .filter((q) => q.eq(q.field("eventId"), event._id))
+      .first();
+    if (!guest) return null;
+    return {
+      _id: guest._id,
+      name: guest.name,
+      tableNumber: guest.tableNumber,
+      seatNumber: guest.seatNumber,
+    };
+  },
+});
+
 /** Public — used by the guest portal page. Returns only guest-safe fields. */
 export const getBySlug = query({
   args: { slug: v.string() },
@@ -442,6 +625,8 @@ export const getBySlug = query({
       themeColor: event.themeColor,
       themeColorSecondary: event.themeColorSecondary,
       language: event.language,
+      isPublic: event.isPublic,
+      claimMode: event.claimMode,
     };
   },
 });
@@ -476,6 +661,11 @@ export const create = mutation({
     language: v.optional(v.string()),
     /** Make this event publicly discoverable in Home search. Defaults false. */
     isPublic: v.optional(v.boolean()),
+    /** Public claim flow: "open" lets anyone create a guest row; "name-list"
+     *  forces visitors to find their pre-loaded name. */
+    claimMode: v.optional(
+      v.union(v.literal("open"), v.literal("name-list")),
+    ),
   },
   handler: async (ctx, input) => {
     const user = await requireUser(ctx);
@@ -511,6 +701,7 @@ export const create = mutation({
       themeColorSecondary: input.themeColorSecondary,
       language: input.language,
       isPublic: input.isPublic ?? false,
+      claimMode: input.claimMode ?? "open",
       guestTokenSalt,
       status: input.status || "active",
       memoryWallEnabled: "1",
@@ -563,6 +754,9 @@ export const update = mutation({
     language: v.optional(v.union(v.string(), v.null())),
     /** Toggle public discoverability. */
     isPublic: v.optional(v.boolean()),
+    claimMode: v.optional(
+      v.union(v.literal("open"), v.literal("name-list")),
+    ),
   },
   handler: async (ctx, { id, ...rest }) => {
     const user = await requireUser(ctx);

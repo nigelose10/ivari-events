@@ -96,6 +96,7 @@ export default function Forge() {
   const [locationPlaceId, setLocationPlaceId] = useState("");
   const [maxCapacity, setMaxCapacity] = useState(0);
   const [isPublic, setIsPublic] = useState(false);
+  const [claimMode, setClaimMode] = useState<"open" | "name-list">("open");
   const [rsvpDeadlineDate, setRsvpDeadlineDate] = useState("");
   const [rsvpDeadlineTime, setRsvpDeadlineTime] = useState("");
   const [surveyQuestions, setSurveyQuestions] = useState<SurveyQuestion[]>([]);
@@ -235,6 +236,7 @@ export default function Forge() {
           themeColor: themeColor || undefined,
           language: language || undefined,
           isPublic: isPublic || undefined,
+          claimMode: isPublic ? claimMode : undefined,
         });
         toast.success("Event launched!");
         // Convex returns the new event id; route to /pulse/:slug if available, else /pulse/:id
@@ -681,6 +683,39 @@ export default function Forge() {
                       </div>
                     </div>
                   </button>
+
+                  {isPublic && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setClaimMode("open")}
+                        className={`p-3 rounded-xl border text-left transition-colors ${
+                          claimMode === "open"
+                            ? "bg-[oklch(0.75_0.15_55/12%)] border-[oklch(0.75_0.15_55/40%)]"
+                            : "bg-[oklch(1_0_0/3%)] border-[oklch(1_0_0/8%)] hover:bg-[oklch(1_0_0/5%)]"
+                        }`}
+                      >
+                        <div className="text-xs font-semibold mb-0.5">Open RSVP</div>
+                        <div className="text-[10px] text-warm-muted leading-snug">
+                          Anyone can join with one tap
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setClaimMode("name-list")}
+                        className={`p-3 rounded-xl border text-left transition-colors ${
+                          claimMode === "name-list"
+                            ? "bg-[oklch(0.75_0.15_55/12%)] border-[oklch(0.75_0.15_55/40%)]"
+                            : "bg-[oklch(1_0_0/3%)] border-[oklch(1_0_0/8%)] hover:bg-[oklch(1_0_0/5%)]"
+                        }`}
+                      >
+                        <div className="text-xs font-semibold mb-0.5">Find your name</div>
+                        <div className="text-[10px] text-warm-muted leading-snug">
+                          Pre-loaded list with table assignments
+                        </div>
+                      </button>
+                    </div>
+                  )}
                 </GlassCard>
 
                 {/* Language Selector */}

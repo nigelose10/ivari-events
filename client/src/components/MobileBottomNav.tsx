@@ -19,11 +19,11 @@ import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { motion } from "framer-motion";
 import { Drawer } from "vaul";
-import { LayoutGrid, Plus, Image as ImageIcon, User, LogOut, Settings, Sun, Moon } from "lucide-react";
+import { LayoutGrid, Plus, Image as ImageIcon, User, LogOut, Settings, Sun, Moon, MessageCircle } from "lucide-react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useTheme } from "@/contexts/ThemeContext";
 
-type TabKey = "events" | "forge" | "gallery" | "you";
+type TabKey = "events" | "chat" | "forge" | "gallery" | "you";
 
 interface Tab {
   key: TabKey;
@@ -34,6 +34,7 @@ interface Tab {
 
 const TABS: Tab[] = [
   { key: "events", label: "Events", path: "/", icon: LayoutGrid },
+  { key: "chat", label: "Chat", path: "/chats", icon: MessageCircle },
   { key: "forge", label: "Forge", path: "/forge", icon: Plus },
   { key: "gallery", label: "Gallery", path: "/gallery", icon: ImageIcon },
   { key: "you", label: "You", icon: User },
@@ -84,8 +85,11 @@ export default function MobileBottomNav() {
     return () => window.removeEventListener("scroll", handler);
   }, []);
 
-  const renderable =
-    isAuthenticated && !!user && isMobile && !shouldHideForRoute(location);
+  // Render for everyone on mobile — guests need a way to get to Forge (which
+  // gates auth on submit) and Chat (which prompts sign-in inside its index).
+  // Hides on portal/memory/live/handler/checkin where the standalone surfaces
+  // own the chrome.
+  const renderable = isMobile && !shouldHideForRoute(location);
 
   // Toggle body flag so global CSS can add bottom padding.
   useEffect(() => {
@@ -104,9 +108,13 @@ export default function MobileBottomNav() {
       ? "forge"
       : location === "/gallery"
         ? "gallery"
-        : location === "/"
-          ? "events"
-          : "events";
+        : location === "/chats" || location.startsWith("/chats/")
+          ? "chat"
+          : location === "/profile"
+            ? "you"
+            : location === "/"
+              ? "events"
+              : "events";
 
   const handleTabPress = (tab: Tab) => {
     haptic();

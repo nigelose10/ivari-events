@@ -18,6 +18,7 @@ const LiveEvent = lazy(() => import("./pages/LiveEvent"));
 const MemoryWall = lazy(() => import("./pages/MemoryWall"));
 const Gallery = lazy(() => import("./pages/Gallery"));
 const Chats = lazy(() => import("./pages/Chats"));
+const ChatsIndex = lazy(() => import("./pages/ChatsIndex"));
 const CheckIn = lazy(() => import("./pages/CheckIn"));
 const Profile = lazy(() => import("./pages/Profile"));
 const NotFound = lazy(() => import("./pages/NotFound"));
@@ -70,6 +71,7 @@ function Router() {
         <Route path="/portal/:slug" component={Portal} />
         <Route path="/live/:slug" component={LiveEvent} />
         <Route path="/memory/:slug" component={MemoryWall} />
+        <Route path="/chats" component={ChatsIndex} />
         <Route path="/chats/:slug" component={Chats} />
         <Route path="/gallery" component={Gallery} />
         <Route path="/profile" component={Profile} />

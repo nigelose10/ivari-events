@@ -122,6 +122,14 @@ export default defineSchema({
      *  one-tap join via `events.joinPublicEvent`. Defaults to false (existing
      *  events stay private — invitation-only). */
     isPublic: v.optional(v.boolean()),
+    /** How public guests claim a seat:
+     *   - "open"      (default): one-tap join; new guest row created on the fly
+     *   - "name-list": host pre-loaded the guest list — visitor must find and
+     *                  confirm their name before they get a table assignment.
+     *                  Used for galas/weddings where seating is fixed. */
+    claimMode: v.optional(
+      v.union(v.literal("open"), v.literal("name-list")),
+    ),
     /**
      * V10 seating chart — host-defined table layout for the event. Each
      * entry has a stable string id (referenced by guests.tableNumber) plus
@@ -258,12 +266,19 @@ export default defineSchema({
      *  per-guest invitation link. Once set, the event sticks to the user's
      *  profile and shows up in their "I'm Attending" list. */
     claimedByUserId: v.optional(v.id("users")),
+    /** Anonymous device key used when a visitor confirms their name without
+     *  signing up (the gala/wedding flow). The client stores this in
+     *  localStorage and presents it to subsequent queries to recognize the
+     *  same guest on the same device. Mutually exclusive with
+     *  `claimedByUserId` until the visitor upgrades by signing in. */
+    claimedByDeviceKey: v.optional(v.string()),
     /** Timestamp of the claim (ms). */
     claimedAt: v.optional(v.number()),
     updatedAt: v.number(),
   })
     .index("by_eventId", ["eventId"])
     .index("by_claimedByUserId", ["claimedByUserId"])
+    .index("by_claimedByDeviceKey", ["claimedByDeviceKey"])
     .searchIndex("search_name_for_event", {
       searchField: "name",
       filterFields: ["eventId"],

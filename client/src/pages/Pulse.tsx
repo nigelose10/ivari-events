@@ -382,6 +382,14 @@ export default function Pulse() {
     updateMutation.mutate({ id: event.id, isPublic: !event.isPublic });
   }, [event, updateMutation]);
 
+  // Toggle the public claim mode between "open" (default — one-tap join) and
+  // "name-list" (visitors find their pre-loaded name and get a table).
+  const toggleClaimMode = useCallback(() => {
+    if (!event) return;
+    const next = event.claimMode === "name-list" ? "open" : "name-list";
+    updateMutation.mutate({ id: event.id, claimMode: next });
+  }, [event, updateMutation]);
+
   const handleRegenImage = useCallback(() => {
     if (!event) return;
     regenMutation.mutate({ subject: event.title });
@@ -887,6 +895,26 @@ export default function Pulse() {
                         <div className="glass-toggle-thumb" />
                       </div>
                     </div>
+
+                    {event.isPublic && (
+                      <div className="mt-3 pt-3 border-t border-[oklch(1_0_0/6%)] flex items-center justify-between">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[11px] font-medium">Public claim flow</p>
+                          <p className="text-[10px] text-[oklch(0.45_0.02_265)] mt-0.5">
+                            {event.claimMode === "name-list"
+                              ? "Visitors find their pre-loaded name → table"
+                              : "One-tap join, anyone can RSVP"}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={toggleClaimMode}
+                          className="text-[10px] font-semibold uppercase tracking-[0.12em] px-2.5 py-1.5 rounded-lg bg-[oklch(1_0_0/5%)] hover:bg-[oklch(1_0_0/9%)] border border-[oklch(1_0_0/8%)] transition-colors"
+                        >
+                          {event.claimMode === "name-list" ? "Switch to open" : "Switch to name-list"}
+                        </button>
+                      </div>
+                    )}
                   </GlassCard>
 
                   {event.memoryWallEnabled === "1" && (

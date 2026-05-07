@@ -11,6 +11,8 @@
  */
 import { driver } from "driver.js";
 import "driver.js/dist/driver.css";
+// Glass/dark token override — keep AFTER the default import so our rules win.
+import "./onboarding.css";
 
 const HOME_TOUR_KEY = "ivari.tour.home.v1";
 

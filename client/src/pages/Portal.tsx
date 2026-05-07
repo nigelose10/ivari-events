@@ -31,6 +31,8 @@ import { LiquidButton } from "@/components/LiquidButton";
 import { AmbientBackground } from "@/components/AmbientBackground";
 import { WeatherWidget } from "@/components/WeatherWidget";
 import { EnvelopeReveal } from "@/components/EnvelopeReveal";
+import { PublicNameClaim } from "@/components/PublicNameClaim";
+import { getDeviceKey } from "@/lib/deviceKey";
 import { RSVPClimax } from "@/components/RSVPClimax";
 import { hasSeenReveal, markRevealSeen } from "@/lib/envelopeReveal";
 import { motion, AnimatePresence } from "framer-motion";
@@ -233,6 +235,41 @@ export default function Portal() {
     api.users.myClaimedGuestForEvent,
     isAuthenticated && slug ? { eventSlug: slug } : "skip",
   );
+
+  // Name-list claim flow — anon-friendly. When the event uses claimMode
+  // "name-list" and we have neither a Stack-claimed guest nor a token-bound
+  // guest, render PublicNameClaim. We also fetch any prior anon claim from
+  // localStorage's deviceKey so a returning visitor lands on their seat.
+  const isNameListMode =
+    eventData?.isPublic === true && eventData?.claimMode === "name-list";
+  const deviceKey = useMemo(() => getDeviceKey(), []);
+  const deviceClaim = useQuery(
+    api.events.getClaimByDeviceKey,
+    isNameListMode && slug && deviceKey ? { slug, deviceKey } : "skip",
+  );
+  const [nameClaim, setNameClaim] = useState<{
+    guestId: string;
+    name: string;
+    tableNumber?: string;
+    seatNumber?: string;
+  } | null>(null);
+  // Hydrate from server-side device-claim on first arrival.
+  useEffect(() => {
+    if (deviceClaim && !nameClaim) {
+      setNameClaim({
+        guestId: deviceClaim._id as unknown as string,
+        name: deviceClaim.name,
+        tableNumber: deviceClaim.tableNumber,
+        seatNumber: deviceClaim.seatNumber,
+      });
+    }
+  }, [deviceClaim, nameClaim]);
+  // Block we want the claim UI: no token, no signed-in claim, no prior anon claim.
+  const needsNameClaim =
+    isNameListMode &&
+    !resolvedGuestId &&
+    !myClaimed &&
+    !nameClaim;
   // V11 — once we resolve the user's claimed guest record, prefill name so
   // returning visitors don't have to retype it. Only seeds when blank to
   // respect any in-progress edits.
@@ -486,13 +523,49 @@ export default function Portal() {
         />
       )}
 
+      {/* Name-list claim — for public events where the host pre-loaded the
+          guest list (gala/wedding flow). Visitor types their name, picks
+          their row, gets a table assignment. Anon-friendly — no account
+          required. Renders BEFORE the main hero so the page can't feel
+          half-anonymous. */}
+      {showMainContent && needsNameClaim && eventData && (
+        <div className="relative z-20 min-h-[100dvh] flex flex-col items-center justify-center px-6 py-16 gap-6">
+          <div className="text-center max-w-md">
+            <p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-[oklch(0.5_0.02_265)] mb-2">
+              Welcome
+            </p>
+            <h1 className="text-3xl sm:text-4xl font-semibold tracking-[-0.03em] mb-3">
+              {eventData.title}
+            </h1>
+            {eventData.description && (
+              <p className="text-sm text-[oklch(0.6_0.02_265)] leading-relaxed mb-2">
+                {eventData.description}
+              </p>
+            )}
+          </div>
+          <PublicNameClaim
+            slug={slug}
+            onClaimed={(claim) => {
+              setNameClaim({
+                guestId: claim.guestId as unknown as string,
+                name: claim.name,
+                tableNumber: claim.tableNumber,
+                seatNumber: claim.seatNumber,
+              });
+              if (!guestName) setGuestName(claim.name);
+            }}
+          />
+        </div>
+      )}
+
       {/* Main content — hidden until reveal completes so the curtain pulls
           back onto a clean composition, not a half-mounted hero. */}
       <div
         style={{
-          opacity: showMainContent ? 1 : 0,
+          opacity: showMainContent && !needsNameClaim ? 1 : 0,
           transition: "opacity 600ms cubic-bezier(0.22, 1, 0.36, 1)",
-          pointerEvents: showMainContent ? "auto" : "none",
+          pointerEvents: showMainContent && !needsNameClaim ? "auto" : "none",
+          display: needsNameClaim ? "none" : "block",
         }}
       >
 
