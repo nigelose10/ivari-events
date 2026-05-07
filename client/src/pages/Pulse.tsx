@@ -20,6 +20,7 @@ import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { GlassCard } from "@/components/GlassCard";
 import { LiquidButton } from "@/components/LiquidButton";
+import { AdminsPanel } from "@/components/AdminsPanel";
 import { AmbientBackground } from "@/components/AmbientBackground";
 import { WeatherWidget } from "@/components/WeatherWidget";
 import { SegmentedControl } from "@/components/SegmentedControl";
@@ -1035,6 +1036,9 @@ export default function Pulse() {
                     )}
                   </div>
                 </GlassCard>
+
+                {/* Admins — co-hosts with full Pulse access. Host-only. */}
+                {event.id && <AdminsPanel eventId={event.id} />}
 
                 {/* Danger zone — kept separate, intentional visual rest. */}
                 <button

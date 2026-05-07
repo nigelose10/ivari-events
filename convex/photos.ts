@@ -222,6 +222,37 @@ export const mintUploadUrl = internalMutation({
 });
 
 /**
+ * Mint an upload URL for an anonymous device-claimed guest. Verifies the
+ * deviceKey matches the guest row before handing back the URL — no key
+ * means no upload, even though the surface is anon-friendly elsewhere.
+ *
+ * Returns just the URL string, mirroring `requestUploadUrl` so the Memory
+ * Wall client can swap entry points seamlessly.
+ */
+export const requestAnonUploadUrl = mutation({
+  args: {
+    eventId: v.id("events"),
+    guestId: v.id("guests"),
+    deviceKey: v.string(),
+  },
+  handler: async (ctx, { eventId, guestId, deviceKey }): Promise<string> => {
+    const event = await ctx.db.get(eventId);
+    if (!event) throw new Error("Event not found");
+    if (event.memoryWallEnabled !== "1") {
+      throw new Error("Photo uploads not enabled for this event");
+    }
+    const guest = await ctx.db.get(guestId);
+    if (!guest || guest.eventId !== eventId) {
+      throw new Error("Guest not on this event");
+    }
+    if (!deviceKey || guest.claimedByDeviceKey !== deviceKey) {
+      throw new Error("Device key does not match this guest's claim");
+    }
+    return ctx.storage.generateUploadUrl();
+  },
+});
+
+/**
  * Step 2: persist the photo record after the client has uploaded the file
  * and received a storageId. Verifies the JWT inline by way of an internal
  * action (savePhotoRecord is itself an action below).
@@ -291,6 +322,64 @@ export const savePhotoInternal = internalMutation({
     });
 
     return { _id: photoId, imageUrl: url, status: finalStatus };
+  },
+});
+
+/**
+ * Anonymous device-claimed submission. Used by guests on a public name-list
+ * event who claimed their seat with a `deviceKey` but never signed up.
+ *
+ * Trust model:
+ *   - `guestId` must belong to the event whose `eventId` was passed
+ *   - that guest's `claimedByDeviceKey` must equal the supplied key
+ *
+ * Failing either check throws — we don't want a guess-the-guestId attack.
+ * The photo lands `status: "pending"` so the host's moderation queue is
+ * still the gate to publication.
+ */
+export const submitAnonClaimedPhoto = mutation({
+  args: {
+    eventId: v.id("events"),
+    guestId: v.id("guests"),
+    deviceKey: v.string(),
+    storageId: v.id("_storage"),
+    caption: v.optional(v.string()),
+  },
+  handler: async (
+    ctx,
+    { eventId, guestId, deviceKey, storageId, caption },
+  ): Promise<{ success: boolean; photoId: Id<"photos">; status: "pending" }> => {
+    const event = await ctx.db.get(eventId);
+    if (!event) throw new Error("Event not found");
+    if (event.memoryWallEnabled !== "1") {
+      throw new Error("Photo uploads not enabled for this event");
+    }
+    const guest = await ctx.db.get(guestId);
+    if (!guest || guest.eventId !== eventId) {
+      throw new Error("Guest not on this event");
+    }
+    if (!deviceKey || guest.claimedByDeviceKey !== deviceKey) {
+      throw new Error("Device key does not match this guest's claim");
+    }
+    if (caption && caption.length > 1000) throw new Error("Caption too long");
+
+    const url = await ctx.storage.getUrl(storageId);
+    if (!url) throw new Error("Failed to resolve storage URL");
+
+    const photoId = await ctx.db.insert("photos", {
+      eventId,
+      uploaderName: guest.name,
+      // Anon uploads have no Stack user — leave uploaderUserId blank but
+      // still tie the post to the claimed guest via uploaderName.
+      uploaderUserId: undefined,
+      uploaderAvatarUrl: undefined,
+      imageUrl: url,
+      fileKey: storageId,
+      caption,
+      status: "pending",
+      featured: false,
+    });
+    return { success: true, photoId, status: "pending" as const };
   },
 });
 

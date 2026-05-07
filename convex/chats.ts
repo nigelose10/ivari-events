@@ -26,6 +26,12 @@ import {
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
+import { getEventRole } from "./lib/permissions";
+
+// Local alias so the inline call site reads naturally — see chats.listForEvent.
+async function getEventRoleInline(ctx: QueryCtx, eventId: Id<"events">) {
+  return getEventRole(ctx, eventId);
+}
 
 // ───────────────────────────────────────────────────────────────────────────
 // Auth helpers
@@ -109,13 +115,34 @@ async function findGuestMembership(
 export const listForEvent = query({
   args: { eventId: v.id("events") },
   handler: async (ctx, { eventId }) => {
-    const user = await requireUser(ctx);
-    await requireOwnedEvent(ctx, eventId, user._id);
+    // Anyone with a role on this event can see the chat list — host,
+    // co-host, OR a signed-in user with a claimed guest row. Returns
+    // the chat list scoped to what their role allows: hosts see all,
+    // guests see only chats they're members of.
+    const role = await getEventRoleInline(ctx, eventId);
+    if (!role.role) {
+      // No access. Returning [] (instead of throwing) keeps the page
+      // calm — UI shows the empty state rather than a Convex error.
+      return [];
+    }
 
-    const chats = await ctx.db
+    let chats = await ctx.db
       .query("chats")
       .withIndex("by_eventId", (q) => q.eq("eventId", eventId))
       .collect();
+
+    if (role.role === "guest") {
+      // Filter to chats the guest is a member of (or "general" — every
+      // attending guest is implicitly in general).
+      const myMembership = await ctx.db
+        .query("chatMembers")
+        .withIndex("by_userId", (q) => q.eq("userId", role.user!._id))
+        .collect();
+      const memberOf = new Set(myMembership.map((m) => m.chatId));
+      chats = chats.filter(
+        (c) => c.type === "general" || memberOf.has(c._id),
+      );
+    }
 
     return Promise.all(
       chats.map(async (chat) => {

@@ -130,6 +130,11 @@ export default defineSchema({
     claimMode: v.optional(
       v.union(v.literal("open"), v.literal("name-list")),
     ),
+    /** Co-hosts ("admins") with full Pulse access — manage guest list, edit
+     *  the event, moderate photos, send notifications. The original `hostId`
+     *  stays the canonical owner; co-hosts can do anything *except* remove
+     *  themselves the host or transfer ownership. Empty array = no admins. */
+    coHostIds: v.optional(v.array(v.id("users"))),
     /**
      * V10 seating chart — host-defined table layout for the event. Each
      * entry has a stable string id (referenced by guests.tableNumber) plus

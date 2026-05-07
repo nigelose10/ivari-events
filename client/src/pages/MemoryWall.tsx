@@ -34,6 +34,7 @@ import { useUser } from "@stackframe/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { moderateImage } from "@/lib/moderation";
+import { getDeviceKey } from "@/lib/deviceKey";
 import { GlassCard } from "@/components/GlassCard";
 import { LiquidButton } from "@/components/LiquidButton";
 import { AmbientBackground } from "@/components/AmbientBackground";
@@ -92,20 +93,30 @@ export default function MemoryWall() {
   const isHost = hostInfo?.isHost ?? false;
   const eventId = event?._id as Id<"events"> | undefined;
 
-  // Upload pipeline. Three flavors:
+  // Upload pipeline. Four flavors:
   //   - host (signed-in, owns event): direct mutation, lands "approved"
-  //   - signed-in user (not host, may or may not be a claimed guest): direct
-  //     mutation under their identity, lands "pending"
-  //   - token-only guest (anonymous claim via gt= JWT): action chain
-  // The signed-in user path is what makes "your username + photo posts
-  // automatically" actually work.
+  //   - signed-in user (not host): direct mutation under their identity,
+  //     lands "pending" until host approves
+  //   - token-only guest (anon claim via gt= JWT): action chain
+  //   - device-claimed anon guest (name-list flow, no JWT): proves identity
+  //     with the localStorage deviceKey, lands "pending"
   const stackUser = useUser();
   const requestGuestUploadUrl = useAction(api.photos.requestUploadUrl);
   const submitGuest = useAction(api.photos.submitGuestPhoto);
   const generateHostUploadUrl = useMutation(api.photos.generateUploadUrl);
   const submitHost = useMutation(api.photos.submitHostPhoto);
   const submitUser = useMutation(api.photos.submitUserPhoto);
+  const requestAnonUploadUrl = useMutation(api.photos.requestAnonUploadUrl);
+  const submitAnonClaimed = useMutation(api.photos.submitAnonClaimedPhoto);
   const me = useQuery(api.users.me, stackUser ? {} : "skip");
+
+  // Device-claimed anon flow — recover any prior claim so the visitor can
+  // post photos under their guest identity without an account.
+  const deviceKey = useMemo(() => getDeviceKey(), []);
+  const deviceClaim = useQuery(
+    api.events.getClaimByDeviceKey,
+    !stackUser && slug && deviceKey ? { slug, deviceKey } : "skip",
+  );
 
   // Auto-fill the uploader name from the signed-in user's profile so they
   // never have to type it in. They can still override before submit.
@@ -151,9 +162,10 @@ export default function MemoryWall() {
     setShowUpload(true);
   }, []);
 
-  // Three upload paths share two phases (mint → POST), differ at persist.
+  // Four upload paths share two phases (mint → POST), differ at persist.
   // Pre-resolve which one we're on so the body reads top-down.
   const isSignedInUser = !!stackUser && !isHost;
+  const isAnonClaimed = !stackUser && !!deviceClaim && !token;
 
   const handleUpload = useCallback(async () => {
     if (!selectedFile || !eventId) return;
@@ -161,11 +173,18 @@ export default function MemoryWall() {
     try {
       // Step 1: mint an upload URL.
       //   - host or signed-in user: direct mutation (auth via Stack JWT)
-      //   - token-only guest: action chain that verifies the gt= JWT first
+      //   - token-only guest: action chain that verifies the gt= JWT
+      //   - anon device-claimed guest: mutation that proves identity via deviceKey
       const uploadUrl =
         isHost || isSignedInUser
           ? await generateHostUploadUrl()
-          : await requestGuestUploadUrl({ token });
+          : isAnonClaimed && deviceClaim
+            ? await requestAnonUploadUrl({
+                eventId,
+                guestId: deviceClaim._id as Id<"guests">,
+                deviceKey,
+              })
+            : await requestGuestUploadUrl({ token });
 
       // Step 2: direct POST the binary to the URL Convex returned.
       const res = await fetch(uploadUrl, {
@@ -190,6 +209,15 @@ export default function MemoryWall() {
       } else if (isSignedInUser) {
         await submitUser({
           eventId,
+          storageId,
+          caption: caption.trim() || undefined,
+        });
+        toast.success("Posted — pending host approval");
+      } else if (isAnonClaimed && deviceClaim) {
+        await submitAnonClaimed({
+          eventId,
+          guestId: deviceClaim._id as Id<"guests">,
+          deviceKey,
           storageId,
           caption: caption.trim() || undefined,
         });
@@ -219,14 +247,19 @@ export default function MemoryWall() {
     eventId,
     isHost,
     isSignedInUser,
+    isAnonClaimed,
+    deviceClaim,
+    deviceKey,
     token,
     uploaderName,
     caption,
     requestGuestUploadUrl,
+    requestAnonUploadUrl,
     generateHostUploadUrl,
     submitGuest,
     submitHost,
     submitUser,
+    submitAnonClaimed,
   ]);
 
   const openLightbox = (index: number) => setLightboxIndex(index);
@@ -267,7 +300,14 @@ export default function MemoryWall() {
   }
 
   // Guests can upload only with a token. Hosts always can.
-  const canUpload = isHost || !!token;
+  // Upload eligibility: must have an identity (host, signed-in user, token,
+  // or device-claimed guest) AND the event must be active. Past/cancelled
+  // events surface as view-only — guests scroll memories without an Add
+  // Photo button. Hosts always retain the affordance.
+  const eventStatus = (event as any)?.status as string | undefined;
+  const eventOpen = !eventStatus || eventStatus === "active" || eventStatus === "draft";
+  const hasIdentity = isHost || isSignedInUser || isAnonClaimed || !!token;
+  const canUpload = hasIdentity && (isHost || eventOpen);
 
   return (
     <div className="min-h-screen relative">

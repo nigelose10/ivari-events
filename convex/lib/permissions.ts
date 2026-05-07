@@ -54,10 +54,61 @@ export async function requireHostOrCohost(
   if (!event) throw new Error("Event not found");
 
   const isHost = event.hostId === user._id;
-  // TODO(V7 W5): add co-host check here once `eventCohosts` table lands:
-  //   const cohost = await ctx.db.query("eventCohosts")...
-  //   if (!isHost && !cohost) throw …
-  if (!isHost) throw new Error("Forbidden");
+  const isCoHost =
+    !!event.coHostIds && event.coHostIds.includes(user._id);
+  if (!isHost && !isCoHost) throw new Error("Forbidden");
 
   return { user, event };
+}
+
+/**
+ * Softer check for surfaces guests can also see (chat, memory wall reads).
+ * Returns the role rather than throwing — the caller decides what to do.
+ *
+ * Roles:
+ *   - "host"      — `event.hostId === user._id`
+ *   - "co-host"   — user is in `event.coHostIds`
+ *   - "guest"     — user has at least one `guests` row on the event with
+ *                   `claimedByUserId === user._id`
+ *   - null         — none of the above (no access to private surfaces)
+ *
+ * Public-by-default events (`isPublic: true`) still gate sensitive ops like
+ * sending messages on the role; reads are allowed for any "guest" or above.
+ */
+export async function getEventRole(
+  ctx: QueryCtx | MutationCtx,
+  eventId: Id<"events">,
+): Promise<{
+  user: Doc<"users"> | null;
+  event: Doc<"events"> | null;
+  role: "host" | "co-host" | "guest" | null;
+}> {
+  const identity = await ctx.auth.getUserIdentity();
+  let user: Doc<"users"> | null = null;
+  if (identity) {
+    user = await ctx.db
+      .query("users")
+      .withIndex("by_tokenIdentifier", (q) =>
+        q.eq("tokenIdentifier", identity.tokenIdentifier),
+      )
+      .unique();
+  }
+  const event = await ctx.db.get(eventId);
+  if (!event) return { user, event: null, role: null };
+  if (!user) return { user: null, event, role: null };
+
+  if (event.hostId === user._id) return { user, event, role: "host" };
+  if (event.coHostIds && event.coHostIds.includes(user._id)) {
+    return { user, event, role: "co-host" };
+  }
+
+  // Claimed-guest check — at least one guests row pointing back to this user.
+  const claimed = await ctx.db
+    .query("guests")
+    .withIndex("by_claimedByUserId", (q) => q.eq("claimedByUserId", user._id))
+    .collect();
+  if (claimed.some((g) => g.eventId === eventId)) {
+    return { user, event, role: "guest" };
+  }
+  return { user, event, role: null };
 }

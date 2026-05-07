@@ -95,6 +95,13 @@ export default function Home() {
   const claimedEventsRaw = useQuery(api.events.myClaimedEvents, {
     deviceKey: deviceKey || undefined,
   });
+  // "We think you're on the guest list" — fuzzy match the signed-in user's
+  // display name against unclaimed guests on public name-list events.
+  const claimSuggestions = useQuery(
+    api.events.guessClaimsForMe,
+    isAuthenticated ? {} : "skip",
+  );
+  const claimByName = useMutation(api.events.claimByName);
   const claimedEvents = useMemo(
     () => (claimedEventsRaw ?? []).map((e: any) => ({ ...e, id: e._id })),
     [claimedEventsRaw],
@@ -265,6 +272,49 @@ export default function Home() {
         <div className="max-w-2xl mx-auto space-y-8">
           {/* Public-event discovery — type-to-find. Anon-tolerant. */}
           <EventDiscovery />
+
+          {/* Name-match suggestion banner — surfaces when your display
+              name fuzzy-matches an unclaimed guest row on a public event. */}
+          {(claimSuggestions ?? []).length > 0 && (
+            <div className="space-y-2">
+              {(claimSuggestions ?? []).slice(0, 2).map((s: any) => (
+                <button
+                  key={`${s.eventSlug}-${s.guestId}`}
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const res = await claimByName({
+                        slug: s.eventSlug,
+                        guestId: s.guestId,
+                      });
+                      if (res.state === "claimed" || res.state === "already-yours") {
+                        toast.success(
+                          s.tableNumber
+                            ? `Confirmed — Table ${s.tableNumber}`
+                            : "You're on the list",
+                        );
+                      } else {
+                        toast.info("That seat is already claimed.");
+                      }
+                    } catch (err: any) {
+                      toast.error(err?.message ?? "Couldn't confirm");
+                    }
+                  }}
+                  className="w-full text-left p-4 rounded-2xl bg-[oklch(0.78_0.13_60/8%)] border border-[oklch(0.78_0.13_60/24%)] hover:bg-[oklch(0.78_0.13_60/14%)] transition-colors"
+                >
+                  <p className="text-[10px] font-semibold tracking-[0.18em] uppercase text-[oklch(0.78_0.13_60)] mb-1">
+                    Looks like you're on the list
+                  </p>
+                  <p className="text-sm font-medium">
+                    Claim <span className="text-[oklch(0.85_0.13_60)]">{s.guestName}</span> on {s.eventTitle}
+                    {s.tableNumber && (
+                      <span className="text-[oklch(0.55_0.02_265)] font-normal"> · Table {s.tableNumber}</span>
+                    )}
+                  </p>
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* Loading state — boneyard skeleton replaces the legacy spinner.
               The fallback below renders pre-capture; once `pnpm boneyard:build`

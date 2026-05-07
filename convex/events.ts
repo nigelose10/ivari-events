@@ -647,6 +647,185 @@ export const getClaimByDeviceKey = query({
   },
 });
 
+// ───────────────────────────────────────────────────────────────────────────
+// Co-hosts (admins) — host-only management
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * Add a co-host to the event by their email. The user must already have
+ * an ivari account (i.e. signed in at least once so their `users` row
+ * exists). Returns the updated array or an error message.
+ *
+ * Auth: only the host can add co-hosts. Co-hosts cannot promote others —
+ * keeps the chain of authority clear.
+ */
+export const addCoHostByEmail = mutation({
+  args: { eventId: v.id("events"), email: v.string() },
+  handler: async (
+    ctx,
+    { eventId, email },
+  ): Promise<{ ok: true; userId: Id<"users"> } | { ok: false; reason: string }> => {
+    const me = await requireUser(ctx);
+    const event = await ctx.db.get(eventId);
+    if (!event) throw new Error("Event not found");
+    if (event.hostId !== me._id) {
+      // Only the host (not co-hosts) can add new co-hosts. Keeps the
+      // promotion authority unambiguous.
+      return { ok: false, reason: "Only the event host can add admins." };
+    }
+
+    const target = await ctx.db
+      .query("users")
+      .withIndex("by_email", (q) => q.eq("email", email.trim().toLowerCase()))
+      .unique();
+    if (!target) {
+      return {
+        ok: false,
+        reason: `No ivari account found for ${email}. Ask them to sign in once, then try again.`,
+      };
+    }
+    if (target._id === me._id) {
+      return { ok: false, reason: "You're already the host." };
+    }
+
+    const existing = event.coHostIds ?? [];
+    if (existing.includes(target._id)) {
+      return { ok: true, userId: target._id };
+    }
+    await ctx.db.patch(eventId, {
+      coHostIds: [...existing, target._id],
+      updatedAt: Date.now(),
+    });
+    return { ok: true, userId: target._id };
+  },
+});
+
+/** Remove a co-host. Host-only. Idempotent. */
+export const removeCoHost = mutation({
+  args: { eventId: v.id("events"), userId: v.id("users") },
+  handler: async (ctx, { eventId, userId }) => {
+    const me = await requireUser(ctx);
+    const event = await ctx.db.get(eventId);
+    if (!event) throw new Error("Event not found");
+    if (event.hostId !== me._id) {
+      throw new Error("Only the event host can remove admins.");
+    }
+    const existing = event.coHostIds ?? [];
+    await ctx.db.patch(eventId, {
+      coHostIds: existing.filter((id) => id !== userId),
+      updatedAt: Date.now(),
+    });
+    return { success: true };
+  },
+});
+
+/** List co-hosts with their public profile fields. Host-only read so we
+ *  don't leak admin identities to guests. */
+export const listCoHosts = query({
+  args: { eventId: v.id("events") },
+  handler: async (ctx, { eventId }) => {
+    const user = await requireUser(ctx);
+    const event = await ctx.db.get(eventId);
+    if (!event || event.hostId !== user._id) return [];
+    const ids = event.coHostIds ?? [];
+    const profiles = await Promise.all(ids.map((id) => ctx.db.get(id)));
+    return profiles
+      .filter((u): u is Doc<"users"> => !!u)
+      .map((u) => ({
+        _id: u._id,
+        name: u.name,
+        username: u.username,
+        email: u.email,
+        avatarUrl: u.avatarUrl,
+      }));
+  },
+});
+
+/**
+ * Auto-match a signed-in user to a guest row on a public name-list event
+ * by display name. Used on Home for "want to claim X's seat?" prompts —
+ * non-destructive (returns suggestions; does not auto-claim).
+ *
+ * Returns at most 5 suggestions across all public name-list events the user
+ * doesn't already host or have a claimed seat on.
+ */
+export const guessClaimsForMe = query({
+  args: {},
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) return [];
+    const me = await ctx.db
+      .query("users")
+      .withIndex("by_tokenIdentifier", (q) =>
+        q.eq("tokenIdentifier", identity.tokenIdentifier),
+      )
+      .unique();
+    if (!me) return [];
+
+    const myName = (me.name ?? "").trim();
+    const myUsername = (me.username ?? "").trim();
+    if (myName.length < 3 && myUsername.length < 3) return [];
+
+    // Pull all public name-list events.
+    const events = await ctx.db
+      .query("events")
+      .withIndex("by_slug")
+      .collect();
+    const publicNameList = events.filter(
+      (e) => e.isPublic && e.claimMode === "name-list" && e.status === "active",
+    );
+
+    const suggestions: Array<{
+      eventSlug: string;
+      eventTitle: string;
+      guestId: Id<"guests">;
+      guestName: string;
+      tableNumber?: string;
+    }> = [];
+
+    for (const ev of publicNameList) {
+      // Skip events I host or already have a claim on.
+      if (ev.hostId === me._id) continue;
+
+      const myExistingClaim = await ctx.db
+        .query("guests")
+        .withIndex("by_claimedByUserId", (q) => q.eq("claimedByUserId", me._id))
+        .filter((q) => q.eq(q.field("eventId"), ev._id))
+        .first();
+      if (myExistingClaim) continue;
+
+      // Try a name search using the search index.
+      const queries = [myName, myUsername].filter((q) => q.length >= 3);
+      for (const q of queries) {
+        const hits = await ctx.db
+          .query("guests")
+          .withSearchIndex("search_name_for_event", (idx) =>
+            idx.search("name", q).eq("eventId", ev._id),
+          )
+          .take(3);
+        for (const g of hits) {
+          if (g.claimedByUserId) continue;
+          // Only surface "high-confidence" matches: the guest name must
+          // contain the user's name (or vice versa) as a whole token.
+          const lower = g.name.toLowerCase();
+          const fragments = [myName.toLowerCase(), myUsername.toLowerCase()].filter(Boolean);
+          const isStrong = fragments.some((f) => f.length >= 3 && lower.includes(f));
+          if (!isStrong) continue;
+          suggestions.push({
+            eventSlug: ev.slug,
+            eventTitle: ev.title,
+            guestId: g._id,
+            guestName: g.name,
+            tableNumber: g.tableNumber,
+          });
+          if (suggestions.length >= 5) return suggestions;
+        }
+      }
+    }
+    return suggestions;
+  },
+});
+
 /** Public — used by the guest portal page. Returns only guest-safe fields. */
 export const getBySlug = query({
   args: { slug: v.string() },

@@ -88,7 +88,7 @@ export default function Gallery() {
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ ...t, delay: 0.2 + i * 0.08 }}
                   className="snap-start flex-shrink-0 w-[320px] sm:w-[380px] cursor-pointer group"
-                  onClick={() => navigate(`/pulse/${event.id}`)}
+                  onClick={() => navigate(event.memoryWallEnabled === "1" ? `/memory/${event.slug}` : `/pulse/${event.id}`)}
                 >
                   <div className="relative rounded-2xl overflow-hidden border border-[oklch(1_0_0/8%)] bg-[oklch(1_0_0/3%)] backdrop-blur-xl transition-all duration-500 group-hover:border-[oklch(0.75_0.15_55/30%)] group-hover:shadow-[0_0_40px_oklch(0.75_0.15_55/10%)]">
                     {/* Hero Image */}

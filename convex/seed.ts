@@ -641,6 +641,30 @@ export const dra50 = mutation({
       inserted += 1;
     }
 
+    // Ensure a default "General" chat exists so the chat list isn't
+    // blank on first open. Idempotent — checks for existing chat by type.
+    const existingGeneral = await ctx.db
+      .query("chats")
+      .withIndex("by_eventId", (q) => q.eq("eventId", event._id))
+      .filter((q) => q.eq(q.field("type"), "general"))
+      .first();
+    if (!existingGeneral) {
+      const chatId = await ctx.db.insert("chats", {
+        eventId: event._id,
+        name: "General",
+        type: "general",
+        createdBy: host._id,
+        archived: false,
+      });
+      // Seed the host as the first member so they can post immediately.
+      await ctx.db.insert("chatMembers", {
+        chatId,
+        userId: host._id,
+        role: "owner",
+        joinedAt: Date.now(),
+      });
+    }
+
     return {
       slug,
       eventId: event._id,
